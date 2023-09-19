@@ -69,7 +69,7 @@ impl GeyserGrpcClient<()> {
         endpoint: E,
         x_token: Option<T>,
         tls_config: Option<ClientTlsConfig>,
-    ) -> GeyserGrpcClientResult<GeyserGrpcClient<impl Interceptor + Send + Sync>>
+    ) -> GeyserGrpcClientResult<GeyserGrpcClient<impl Interceptor>>
     where
         E: Into<Bytes>,
         T: TryInto<AsciiMetadataValue, Error = InvalidMetadataValue>,
