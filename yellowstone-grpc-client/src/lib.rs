@@ -80,7 +80,7 @@ impl GeyserGrpcClient<()> {
         } else if endpoint.uri().scheme_str() == Some("https") {
             endpoint = endpoint.tls_config(ClientTlsConfig::new())?;
         }
-        endpoint = endpoint.http2_keep_alive_interval(Duration::from_secs(60));
+        endpoint = endpoint.http2_keep_alive_interval(Duration::from_secs(10));
         let x_token: Option<AsciiMetadataValue> = match x_token {
             Some(x_token) => Some(x_token.try_into()?),
             None => None,
