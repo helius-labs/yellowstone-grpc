@@ -37,6 +37,7 @@ message SubscribeRequestFilterAccounts {
   repeated string account = 2;
   repeated string owner = 3;
   repeated SubscribeRequestFilterAccountsFilter filters = 4;
+  optional bool do_not_filter = 5;
 }
 
 message SubscribeRequestFilterAccountsFilter {
@@ -65,6 +66,7 @@ message SubscribeRequestFilterTransactions {
   repeated string account_include = 3;
   repeated string account_exclude = 4;
   repeated string account_required = 6;
+  optional bool do_not_filter = 7;
 }
 
 message SubscribeRequestFilterBlocks {
