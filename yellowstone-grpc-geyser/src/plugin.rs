@@ -29,15 +29,15 @@ const STARTUP_PROCESSED_RECEIVED: u8 = 1 << 1;
 pub struct PluginInner {
     runtime: Runtime,
     startup_status: AtomicU8,
-    snapshot_channel: Option<crossbeam_channel::Sender<Option<Message>>>,
-    grpc_channel: mpsc::UnboundedSender<Message>,
+    snapshot_channel: Option<crossbeam_channel::Sender<Option<Box<Message>>>>,
+    grpc_channel: mpsc::UnboundedSender<Box<Message>>,
     grpc_shutdown: Arc<Notify>,
     prometheus: PrometheusService,
 }
 
 impl PluginInner {
     fn send_message(&self, message: Message) {
-        if self.grpc_channel.send(message).is_ok() {
+        if self.grpc_channel.send(message.into()).is_ok() {
             MESSAGE_QUEUE_SIZE.inc();
         }
     }
@@ -136,7 +136,7 @@ impl GeyserPlugin for Plugin {
         if is_startup {
             let inner = self.inner.as_ref().expect("initialized");
             if let Some(channel) = &inner.snapshot_channel {
-                match channel.send(Some(message)) {
+                match channel.send(Some(message.into())) {
                     Ok(()) => MESSAGE_QUEUE_SIZE.inc(),
                     Err(_) => panic!("failed to send message to startup queue: channel closed"),
                 }

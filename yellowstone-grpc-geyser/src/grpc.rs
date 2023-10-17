@@ -489,9 +489,9 @@ struct BlockMetaStorage {
 }
 
 impl BlockMetaStorage {
-    fn new(unary_concurrency_limit: usize) -> (Self, mpsc::UnboundedSender<Message>) {
+    fn new(unary_concurrency_limit: usize) -> (Self, mpsc::UnboundedSender<Box<Message>>) {
         let inner = Arc::new(RwLock::new(BlockMetaStorageInner::default()));
-        let (tx, mut rx) = mpsc::unbounded_channel();
+        let (tx, mut rx) = mpsc::unbounded_channel::<Box<Message>>();
 
         let storage = Arc::clone(&inner);
         tokio::spawn(async move {
@@ -499,7 +499,7 @@ impl BlockMetaStorage {
 
             while let Some(message) = rx.recv().await {
                 let mut storage = storage.write().await;
-                match message {
+                match message.as_ref() {
                     Message::Slot(msg) => {
                         match msg.status {
                             CommitmentLevel::Processed => &mut storage.processed,
@@ -541,7 +541,7 @@ impl BlockMetaStorage {
                         }
                     }
                     Message::BlockMeta(msg) => {
-                        storage.blocks.insert(msg.slot, msg);
+                        storage.blocks.insert(msg.slot, msg.clone());
                     }
                     msg => {
                         error!("invalid message in BlockMetaStorage: {msg:?}");
@@ -630,7 +630,7 @@ impl BlockMetaStorage {
 
 #[derive(Debug, Default)]
 struct SlotMessages {
-    messages: Vec<Option<Message>>, // Option is used for accounts with low write_version
+    messages: Vec<Option<Box<Message>>>, // Option is used for accounts with low write_version
     block_meta: Option<MessageBlockMeta>,
     transactions: Vec<MessageTransactionInfo>,
     accounts_dedup: HashMap<Pubkey, (u64, usize)>, // (write_version, message_index)
@@ -641,7 +641,7 @@ struct SlotMessages {
 }
 
 impl SlotMessages {
-    pub fn try_seal(&mut self) -> Option<Message> {
+    pub fn try_seal(&mut self) -> Option<Box<Message>> {
         if !self.sealed {
             if let Some(block_meta) = &self.block_meta {
                 if self.transactions.len() == block_meta.executed_transaction_count as usize
@@ -652,7 +652,7 @@ impl SlotMessages {
 
                     let mut accounts = Vec::with_capacity(self.messages.len());
                     for item in self.messages.iter().flatten() {
-                        if let Message::Account(account) = item {
+                        if let Message::Account(account) = item.as_ref() {
                             accounts.push(account.account.clone());
                         }
                     }
@@ -660,10 +660,10 @@ impl SlotMessages {
                     let message = Message::Block(
                         (block_meta.clone(), transactions, accounts, entries).into(),
                     );
-                    self.messages.push(Some(message.clone()));
+                    self.messages.push(Some(message.clone().into()));
 
                     self.sealed = true;
-                    return Some(message);
+                    return Some(message.into());
                 }
             }
         }
@@ -677,8 +677,8 @@ pub struct GrpcService {
     config: ConfigGrpc,
     blocks_meta: Option<BlockMetaStorage>,
     subscribe_id: AtomicUsize,
-    snapshot_rx: Mutex<Option<crossbeam_channel::Receiver<Option<Message>>>>,
-    broadcast_tx: broadcast::Sender<(CommitmentLevel, Arc<Vec<Message>>)>,
+    snapshot_rx: Mutex<Option<crossbeam_channel::Receiver<Option<Box<Message>>>>>,
+    broadcast_tx: broadcast::Sender<(CommitmentLevel, Arc<Vec<Box<Message>>>)>,
 }
 
 impl GrpcService {
@@ -688,8 +688,8 @@ impl GrpcService {
         block_fail_action: ConfigBlockFailAction,
     ) -> Result<
         (
-            Option<crossbeam_channel::Sender<Option<Message>>>,
-            mpsc::UnboundedSender<Message>,
+            Option<crossbeam_channel::Sender<Option<Box<Message>>>>,
+            mpsc::UnboundedSender<Box<Message>>,
             Arc<Notify>,
         ),
         Box<dyn std::error::Error + Send + Sync>,
@@ -773,9 +773,9 @@ impl GrpcService {
     }
 
     async fn geyser_loop(
-        mut messages_rx: mpsc::UnboundedReceiver<Message>,
-        blocks_meta_tx: Option<mpsc::UnboundedSender<Message>>,
-        broadcast_tx: broadcast::Sender<(CommitmentLevel, Arc<Vec<Message>>)>,
+        mut messages_rx: mpsc::UnboundedReceiver<Box<Message>>,
+        blocks_meta_tx: Option<mpsc::UnboundedSender<Box<Message>>>,
+        broadcast_tx: broadcast::Sender<(CommitmentLevel, Arc<Vec<Box<Message>>>)>,
         block_fail_action: ConfigBlockFailAction,
     ) {
         const PROCESSED_MESSAGES_MAX: usize = 31;
@@ -794,13 +794,13 @@ impl GrpcService {
 
                     // Update blocks info
                     if let Some(blocks_meta_tx) = &blocks_meta_tx {
-                        if matches!(message, Message::Slot(_) | Message::BlockMeta(_)) {
+                        if matches!(message.as_ref(), Message::Slot(_) | Message::BlockMeta(_)) {
                             let _ = blocks_meta_tx.send(message.clone());
                         }
                     }
 
                     // Remove outdated block reconstruction info
-                    match &message {
+                    match message.as_ref() {
                         // On startup we can receive few Confirmed/Finalized slots without BlockMeta message
                         // With saved first Processed slot we can ignore errors caused by startup process
                         Message::Slot(msg) if processed_first_slot.is_none() && msg.status == CommitmentLevel::Processed => {
@@ -861,33 +861,36 @@ impl GrpcService {
 
                     // Update block reconstruction info
                     let slot_messages = messages.entry(message.get_slot()).or_default();
-                    if !matches!(message, Message::Slot(_)) {
+                    if !matches!(message.as_ref(), Message::Slot(_)) {
+                        let kind = message.kind();
+                        let slot = message.get_slot();
                         slot_messages.messages.push(Some(message.clone()));
 
                         // If we already build Block message, new message will be a problem
                         if slot_messages.sealed {
-                            prom::update_invalid_blocks(format!("unexpected message {}", message.kind()));
+                            prom::update_invalid_blocks(format!("unexpected message {}", kind));
                             match block_fail_action {
                                 ConfigBlockFailAction::Log => {
-                                    error!("unexpected message #{} -- {} (invalid order)", message.get_slot(), message.kind());
+                                    error!("unexpected message #{} -- {} (invalid order)", slot, kind);
                                 }
                                 ConfigBlockFailAction::Panic => {
-                                    panic!("unexpected message #{} -- {} (invalid order)", message.get_slot(), message.kind());
+                                    panic!("unexpected message #{} -- {} (invalid order)", slot, kind);
                                 }
                             }
                         }
                     }
                     let mut sealed_block_msg = None;
-                    match &message {
+                    match message.as_ref() {
                         Message::BlockMeta(msg) => {
+                            let slot = message.get_slot();
                             if slot_messages.block_meta.is_some() {
                                 prom::update_invalid_blocks("unexpected message: BlockMeta (duplicate)");
                                 match block_fail_action {
                                     ConfigBlockFailAction::Log => {
-                                        error!("unexpected message #{} -- BlockMeta (duplicate)", message.get_slot());
+                                        error!("unexpected message #{} -- BlockMeta (duplicate)", slot);
                                     }
                                     ConfigBlockFailAction::Panic => {
-                                        panic!("unexpected message #{} -- BlockMeta (duplicate)", message.get_slot());
+                                        panic!("unexpected message #{} -- BlockMeta (duplicate)", slot);
                                     }
                                 }
                             }
@@ -926,7 +929,7 @@ impl GrpcService {
                     }
 
                     for message in messages_vec {
-                        if let Message::Slot(slot) = message {
+                        if let Message::Slot(slot) = message.as_ref() {
                             let (mut confirmed_messages, mut finalized_messages) = match slot.status {
                                 CommitmentLevel::Processed => {
                                     (Vec::with_capacity(1), Vec::with_capacity(1))
@@ -980,7 +983,7 @@ impl GrpcService {
                         } else {
                             let mut confirmed_messages = vec![];
                             let mut finalized_messages = vec![];
-                            if matches!(message, Message::Block(_)) {
+                            if matches!(message.as_ref(), Message::Block(_)) {
                                 if let Some(slot_messages) = messages.get(&message.get_slot()) {
                                     if let Some(confirmed_at) = slot_messages.confirmed_at {
                                         confirmed_messages.extend(
@@ -1037,8 +1040,8 @@ impl GrpcService {
         mut filter: Filter,
         stream_tx: mpsc::Sender<TonicResult<SubscribeUpdate>>,
         mut client_rx: mpsc::UnboundedReceiver<Option<Filter>>,
-        mut snapshot_rx: Option<crossbeam_channel::Receiver<Option<Message>>>,
-        mut messages_rx: broadcast::Receiver<(CommitmentLevel, Arc<Vec<Message>>)>,
+        mut snapshot_rx: Option<crossbeam_channel::Receiver<Option<Box<Message>>>>,
+        mut messages_rx: broadcast::Receiver<(CommitmentLevel, Arc<Vec<Box<Message>>>)>,
         drop_client: impl FnOnce(),
     ) {
         CONNECTIONS_TOTAL.inc();
