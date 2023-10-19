@@ -645,7 +645,7 @@ impl SlotMessages {
         if !self.sealed {
             if let Some(block_meta) = &self.block_meta {
                 if self.transactions.len() == block_meta.executed_transaction_count as usize
-                    && self.entries.len() == block_meta.entries_count as usize
+                // && self.entries.len() == block_meta.entries_count as usize
                 {
                     let transactions = std::mem::take(&mut self.transactions);
                     let entries = std::mem::take(&mut self.entries);
