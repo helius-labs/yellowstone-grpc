@@ -427,8 +427,8 @@ async fn main() -> anyhow::Result<()> {
                 args.endpoint,
                 args.x_token,
                 None,
-                Some(Duration::from_secs(10)),
-                Some(Duration::from_secs(10)),
+                Some(Duration::from_secs(20)),
+                Some(Duration::from_secs(20)),
                 false,
             )
             .await
@@ -509,7 +509,7 @@ async fn geyser_subscribe(
 ) -> anyhow::Result<()> {
     let (mut subscribe_tx, mut stream) = client.subscribe().await?;
     subscribe_tx
-        .send(request)
+        .send(request.clone())
         .await
         .map_err(GeyserGrpcClientError::SubscribeSendError)?;
 
@@ -535,6 +535,9 @@ async fn geyser_subscribe(
                             msg.filters, tx
                         );
                         continue;
+                    }
+                    Some(UpdateOneof::Ping(_)) => {
+                        subscribe_tx.send(request.clone()).await?;
                     }
                     _ => {}
                 }
