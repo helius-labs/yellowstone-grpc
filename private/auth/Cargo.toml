@@ -1,0 +1,9 @@
+[package]
+name = "auth"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde = { version = "1.0.190", features = ["derive"] }
+reqwest = "0.11.22"
+async-trait = "0.1.74"
