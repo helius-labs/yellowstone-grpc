@@ -37,10 +37,6 @@ impl Interceptor for InterceptorFn {
         if let Some(x_token) = self.x_token.clone() {
             request.metadata_mut().insert("x-token", x_token);
         }
-        request.metadata_mut().insert(
-            "x-token",
-            AsciiMetadataValue::try_from(b"2887ef2d-5fe7-4ef2-a514-fc012c9119c8").unwrap(),
-        );
         Ok(request)
     }
 }
