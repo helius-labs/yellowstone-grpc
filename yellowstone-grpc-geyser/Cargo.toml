@@ -24,6 +24,7 @@ hyper = { version = "0.14.20", features = ["server"] }
 lazy_static = "1.4.0"
 log = "0.4.17"
 prometheus = "0.13.2"
+scopeguard = "1.2.0"
 serde = { version = "1.0.145", features = ["derive"] }
 serde_json = "1.0.86"
 solana-geyser-plugin-interface = "=1.17.1"

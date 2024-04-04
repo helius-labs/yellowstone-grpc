@@ -7,7 +7,10 @@ use {
         Body, Request, Response, Server, StatusCode,
     },
     log::error,
-    prometheus::{IntCounterVec, IntGauge, IntGaugeVec, Opts, Registry, TextEncoder},
+    prometheus::{
+        Histogram, HistogramOpts, IntCounter, IntCounterVec, IntGauge, IntGaugeVec, Opts, Registry,
+        TextEncoder,
+    },
     solana_geyser_plugin_interface::geyser_plugin_interface::SlotStatus,
     std::sync::Once,
     tokio::sync::oneshot,
@@ -31,8 +34,20 @@ lazy_static::lazy_static! {
         &["reason"]
     ).unwrap();
 
+    pub static ref INCOMING_MESSAGES_COUNTER: IntCounter = IntCounter::new(
+        "incoming_messages_counter", "Incoming message counter"
+    ).unwrap();
+
     pub static ref MESSAGE_QUEUE_SIZE: IntGauge = IntGauge::new(
         "message_queue_size", "Size of geyser message queue"
+    ).unwrap();
+
+    pub static ref SNAPSHOT_MESSAGE_QUEUE_SIZE: IntGauge = IntGauge::new(
+        "snapshot_message_queue_size", "Size of snapshot message queue"
+    ).unwrap();
+
+    pub static ref GEYSER_LOOP_HISTOGRAM: Histogram = Histogram::with_opts(
+        HistogramOpts::new("geyser_loop_histogram", "Processing loop time")
     ).unwrap();
 
     pub static ref CONNECTIONS_TOTAL: IntGauge = IntGauge::new(
@@ -61,6 +76,9 @@ impl PrometheusService {
             register!(INVALID_FULL_BLOCKS);
             register!(MESSAGE_QUEUE_SIZE);
             register!(CONNECTIONS_TOTAL);
+            register!(INCOMING_MESSAGES_COUNTER);
+            register!(SNAPSHOT_MESSAGE_QUEUE_SIZE);
+            register!(GEYSER_LOOP_HISTOGRAM);
 
             VERSION
                 .with_label_values(&[
