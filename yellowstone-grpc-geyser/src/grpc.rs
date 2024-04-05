@@ -2,7 +2,10 @@ use {
     crate::{
         config::{ConfigBlockFailAction, ConfigGrpc},
         filters::{Filter, FilterAccountsDataSlice},
-        prom::{self, CONNECTIONS_TOTAL, MESSAGE_QUEUE_SIZE},
+        prom::{
+            self, CONNECTIONS_TOTAL, GEYSER_LOOP_HISTOGRAM, MESSAGE_QUEUE_SIZE,
+            SNAPSHOT_MESSAGE_QUEUE_SIZE,
+        },
         version::GrpcVersionInfo,
     },
     log::{error, info},
@@ -806,6 +809,10 @@ impl GrpcService {
         loop {
             tokio::select! {
                 Some(message) = messages_rx.recv() => {
+                    let start_time = Instant::now();
+                    let _guard = scopeguard::guard((), |_| {
+                        GEYSER_LOOP_HISTOGRAM.observe(start_time.elapsed().as_millis() as f64);
+                    });
                     MESSAGE_QUEUE_SIZE.dec();
 
                     // Update blocks info
@@ -1092,7 +1099,7 @@ impl GrpcService {
             while is_alive {
                 let message = match snapshot_rx.try_recv() {
                     Ok(message) => {
-                        MESSAGE_QUEUE_SIZE.dec();
+                        SNAPSHOT_MESSAGE_QUEUE_SIZE.dec();
                         match message {
                             Some(message) => message,
                             None => break,

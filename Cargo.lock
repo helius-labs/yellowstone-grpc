@@ -5227,6 +5227,7 @@ dependencies = [
  "lazy_static",
  "log",
  "prometheus",
+ "scopeguard",
  "serde",
  "serde_json",
  "solana-geyser-plugin-interface",

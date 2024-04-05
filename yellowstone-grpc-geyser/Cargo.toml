@@ -29,6 +29,7 @@ hyper = { workspace = true }
 lazy_static = { workspace = true }
 log = { workspace = true }
 prometheus = { workspace = true }
+scopeguard = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 solana-geyser-plugin-interface = { workspace = true }

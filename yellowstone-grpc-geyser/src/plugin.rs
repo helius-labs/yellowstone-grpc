@@ -2,7 +2,10 @@ use {
     crate::{
         config::Config,
         grpc::{GrpcService, Message},
-        prom::{self, PrometheusService, MESSAGE_QUEUE_SIZE},
+        prom::{
+            self, PrometheusService, INCOMING_MESSAGES_COUNTER, MESSAGE_QUEUE_SIZE,
+            SNAPSHOT_MESSAGE_QUEUE_SIZE,
+        },
     },
     solana_geyser_plugin_interface::geyser_plugin_interface::{
         GeyserPlugin, GeyserPluginError, ReplicaAccountInfoVersions, ReplicaBlockInfoVersions,
@@ -34,6 +37,7 @@ pub struct PluginInner {
 
 impl PluginInner {
     fn send_message(&self, message: Message) {
+        INCOMING_MESSAGES_COUNTER.inc();
         if self.grpc_channel.send(message).is_ok() {
             MESSAGE_QUEUE_SIZE.inc();
         }
@@ -134,7 +138,7 @@ impl GeyserPlugin for Plugin {
             if is_startup {
                 if let Some(channel) = &inner.snapshot_channel {
                     match channel.send(Some(message)) {
-                        Ok(()) => MESSAGE_QUEUE_SIZE.inc(),
+                        Ok(()) => SNAPSHOT_MESSAGE_QUEUE_SIZE.inc(),
                         Err(_) => panic!("failed to send message to startup queue: channel closed"),
                     }
                 }
@@ -150,7 +154,7 @@ impl GeyserPlugin for Plugin {
         self.with_inner(|inner| {
             if let Some(channel) = &inner.snapshot_channel {
                 match channel.send(None) {
-                    Ok(()) => MESSAGE_QUEUE_SIZE.inc(),
+                    Ok(()) => SNAPSHOT_MESSAGE_QUEUE_SIZE.inc(),
                     Err(_) => panic!("failed to send message to startup queue: channel closed"),
                 }
             }
