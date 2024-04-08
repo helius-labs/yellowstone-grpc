@@ -53,6 +53,16 @@ lazy_static::lazy_static! {
     pub static ref CONNECTIONS_TOTAL: IntGauge = IntGauge::new(
         "connections_total", "Total number of connections to GRPC service"
     ).unwrap();
+
+    pub static ref BLOCK_UPDATE_HISTOGRAM: Histogram = Histogram::with_opts(
+        HistogramOpts::new("block_update_histogram", "block loop time")
+    ).unwrap();
+    pub static ref REMOVE_OUTDATED_HISTOGRAM: Histogram = Histogram::with_opts(
+        HistogramOpts::new("remove_outdated_histogram", "outdated loop time")
+    ).unwrap();
+    pub static ref UPDATE_RECONSTRUCTION_HISTOGRAM: Histogram = Histogram::with_opts(
+        HistogramOpts::new("update_reconstruction_histogram", "reconstruction loop time")
+    ).unwrap();
 }
 
 #[derive(Debug)]
@@ -79,6 +89,9 @@ impl PrometheusService {
             register!(INCOMING_MESSAGES_COUNTER);
             register!(SNAPSHOT_MESSAGE_QUEUE_SIZE);
             register!(GEYSER_LOOP_HISTOGRAM);
+            register!(BLOCK_UPDATE_HISTOGRAM);
+            register!(REMOVE_OUTDATED_HISTOGRAM);
+            register!(UPDATE_RECONSTRUCTION_HISTOGRAM);
 
             VERSION
                 .with_label_values(&[
