@@ -812,16 +812,16 @@ impl GrpcService {
                 Some(message) = messages_rx.recv() => {
                     let start_time = Instant::now();
                     let _guard = scopeguard::guard((), |_| {
-                        let elapsed = start_time.elapsed().as_micros();
-                        GEYSER_LOOP_HISTOGRAM.observe(elapsed as f64 / 1_000_000.0);
+                        let elapsed = start_time.elapsed().as_nanos();
+                        GEYSER_LOOP_HISTOGRAM.observe(elapsed as f64 / 1_000_000_000.0);
                     });
                     MESSAGE_QUEUE_SIZE.dec();
 
                     {
                         let block_update_start = Instant::now();
                         let _block_update_guard = scopeguard::guard((), |_| {
-                            let elapsed = block_update_start.elapsed().as_micros();
-                            BLOCK_UPDATE_HISTOGRAM.observe(elapsed as f64 / 1_000_000.0);
+                            let elapsed = block_update_start.elapsed().as_nanos();
+                            BLOCK_UPDATE_HISTOGRAM.observe(elapsed as f64 / 1_000_000_000.0);
                         });
 
                         // Update blocks info
@@ -836,8 +836,8 @@ impl GrpcService {
                     {
                         let remove_outdated_start = Instant::now();
                         let _remove_outdated_guard = scopeguard::guard((), |_| {
-                            let elapsed = remove_outdated_start.elapsed().as_micros();
-                            REMOVE_OUTDATED_HISTOGRAM.observe(elapsed as f64 / 1_000_000.0);
+                            let elapsed = remove_outdated_start.elapsed().as_nanos();
+                            REMOVE_OUTDATED_HISTOGRAM.observe(elapsed as f64 / 1_000_000_000.0);
                         });
 
                         match &message {
@@ -903,8 +903,8 @@ impl GrpcService {
                 {
                     let update_reconstruction_start = Instant::now();
                     let _update_reconstruction_guard = scopeguard::guard((), |_| {
-                        let elapsed = update_reconstruction_start.elapsed().as_micros();
-                        UPDATE_RECONSTRUCTION_HISTOGRAM.observe(elapsed as f64 / 1_000_000.0);
+                        let elapsed = update_reconstruction_start.elapsed().as_nanos();
+                        UPDATE_RECONSTRUCTION_HISTOGRAM.observe(elapsed as f64 / 1_000_000_000.0);
                     });
 
                     // Update block reconstruction info
