@@ -27,9 +27,11 @@ use {
             atomic::{AtomicUsize, Ordering},
             Arc,
         },
+        thread,
     },
     tokio::{
         fs,
+        runtime::Builder,
         sync::{broadcast, mpsc, Mutex, Notify, RwLock, Semaphore},
         time::{sleep, Duration, Instant},
     },
@@ -765,13 +767,34 @@ impl GrpcService {
         .max_decoding_message_size(max_decoding_message_size);
 
         // Run geyser message loop
+        // let geyser_service = self.clone(); // Clone the GrpcService or otherwise capture the needed context
+        let geyser_blocks_meta_tx = blocks_meta_tx.clone();
+        let geyser_broadcast_tx = broadcast_tx.clone();
+        let geyser_block_fail_action = block_fail_action;
         let (messages_tx, messages_rx) = mpsc::unbounded_channel();
-        tokio::spawn(Self::geyser_loop(
-            messages_rx,
-            blocks_meta_tx,
-            broadcast_tx,
-            block_fail_action,
-        ));
+        thread::spawn(move || {
+            let rt = Builder::new_multi_thread()
+                .enable_all()
+                .build()
+                .expect("Failed to create a new Tokio runtime");
+
+            rt.block_on(async {
+                Self::geyser_loop(
+                    messages_rx,
+                    geyser_blocks_meta_tx,
+                    geyser_broadcast_tx,
+                    geyser_block_fail_action,
+                )
+                .await;
+            });
+        });
+
+        // tokio::spawn(Self::geyser_loop(
+        //     messages_rx,
+        //     blocks_meta_tx,
+        //     broadcast_tx,
+        //     block_fail_action,
+        // ));
 
         // Run Server
         let shutdown = Arc::new(Notify::new());
