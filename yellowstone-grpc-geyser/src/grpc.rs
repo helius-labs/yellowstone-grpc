@@ -1464,7 +1464,7 @@ impl XTokenChecker {
 impl Interceptor for XTokenChecker {
     fn call(&mut self, mut req: Request<()>) -> Result<Request<()>, Status> {
         if let Some(x_token) = &self.x_token {
-            match req.metadata().get("x_token") {
+            match req.metadata().get("x-token") {
                 Some(t) if x_token == t => Ok(req),
                 _ => Err(Status::unauthenticated("No valid auth token")),
             }
