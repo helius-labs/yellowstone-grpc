@@ -69,11 +69,16 @@ pub struct MessageAccountInfo {
     pub txn_signature: Option<Signature>,
 }
 
+// fn format_status_error(code: Code, message: impl Into<String>) -> Status {
+//     let message = message.into();
+//     let escaped_message =
+//         serde_json::to_string(&message).unwrap_or_else(|_| "\"unknown error\"".to_string());
+//     Status::new(code, escaped_message)
+// }
 fn format_status_error(code: Code, message: impl Into<String>) -> Status {
     let message = message.into();
-    let formatted_message = format!("message: {}", message);
-    let escaped_message = serde_json::to_string(&formatted_message)
-        .unwrap_or_else(|_| "\"unknown error\"".to_string());
+    // Manually escape quotes in the message
+    let escaped_message = message.replace('"', "\\\"");
     Status::new(code, escaped_message)
 }
 
