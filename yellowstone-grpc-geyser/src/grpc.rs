@@ -69,7 +69,7 @@ pub struct MessageAccountInfo {
     pub txn_signature: Option<Signature>,
 }
 
-fn format_and_escape_status_error(code: Code, message: impl Into<String>) -> Status {
+fn format_status_error(code: Code, message: impl Into<String>) -> Status {
     let message = message.into();
     let formatted_message = format!("status: {}, message: \"{}\"", code, message);
     let escaped_message = serde_json::to_string(&formatted_message)
