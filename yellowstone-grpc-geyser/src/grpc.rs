@@ -38,7 +38,7 @@ use {
             server::{Server, TcpIncoming},
             Identity, ServerTlsConfig,
         },
-        Request, Response, Result as TonicResult, Status, Streaming,
+        Code, Request, Response, Result as TonicResult, Status, Streaming,
     },
     tonic_health::server::health_reporter,
     yellowstone_grpc_proto::{
@@ -67,6 +67,14 @@ pub struct MessageAccountInfo {
     pub data: Vec<u8>,
     pub write_version: u64,
     pub txn_signature: Option<Signature>,
+}
+
+fn format_status_error(code: Code, message: impl Into<String>) -> Status {
+    let message = message.into();
+    match serde_json::to_string(&message) {
+        Ok(escaped_message) => Status::new(code, escaped_message),
+        Err(_) => Status::new(code, "unknown error".to_string()),
+    }
 }
 
 impl MessageAccountInfo {
@@ -594,9 +602,15 @@ impl BlockMetaStorage {
         match slot.and_then(|slot| storage.blocks.get(&slot)) {
             Some(block) => match handler(block) {
                 Some(resp) => Ok(Response::new(resp)),
-                None => Err(Status::internal("failed to build response")),
+                None => Err(format_status_error(
+                    Code::NotFound,
+                    "failed to build response",
+                )),
             },
-            None => Err(Status::internal("block is not available yet")),
+            None => Err(format_status_error(
+                Code::Internal,
+                "block is not available yet",
+            )),
         }
     }
 
@@ -610,7 +624,7 @@ impl BlockMetaStorage {
         let storage = self.inner.read().await;
 
         if storage.blockhashes.len() < MAX_RECENT_BLOCKHASHES + 32 {
-            return Err(Status::internal("startup"));
+            return Err(format_status_error(Code::Internal, "startup"));
         }
 
         let slot = match commitment {
@@ -1169,7 +1183,7 @@ impl GrpcService {
                             Err(broadcast::error::RecvError::Lagged(_)) => {
                                 info!("client #{id}: lagged to receive geyser messages");
                                 tokio::spawn(async move {
-                                    let _ = stream_tx.send(Err(Status::internal("lagged"))).await;
+                                    let _ = stream_tx.send(Err(format_status_error(Code::Internal, "lagged"))).await;
                                 });
                                 break 'outer;
                             }
@@ -1183,7 +1197,7 @@ impl GrpcService {
                                         Err(mpsc::error::TrySendError::Full(_)) => {
                                             error!("client #{id}: lagged to send update");
                                             tokio::spawn(async move {
-                                                let _ = stream_tx.send(Err(Status::internal("lagged"))).await;
+                                                let _ = stream_tx.send(Err(format_status_error(Code::Internal, "lagged"))).await;
                                             });
                                             break 'outer;
                                         }
@@ -1293,8 +1307,8 @@ impl Geyser for GrpcService {
                                 },
                                 Err(error) => Err(error.to_string()),
                             } {
-                                let err = Err(Status::invalid_argument(format!(
-                                    "failed to create filter: {error}"
+                                let err = Err(format_status_error(Code::InvalidArgument, format!(
+                                    "failed to create filter: {}", error
                                 )));
                                 if incoming_stream_tx.send(err).await.is_err() {
                                     let _ = incoming_client_tx.send(None);
@@ -1355,7 +1369,7 @@ impl Geyser for GrpcService {
                 )
                 .await
         } else {
-            Err(Status::unimplemented("method disabled"))
+            Err(format_status_error(Code::Unimplemented, "method disabled"))
         }
     }
 
@@ -1375,7 +1389,7 @@ impl Geyser for GrpcService {
                 )
                 .await
         } else {
-            Err(Status::unimplemented("method disabled"))
+            Err(format_status_error(Code::Unimplemented, "method disabled"))
         }
     }
 
@@ -1391,7 +1405,7 @@ impl Geyser for GrpcService {
                 )
                 .await
         } else {
-            Err(Status::unimplemented("method disabled"))
+            Err(format_status_error(Code::Unimplemented, "method disabled"))
         }
     }
 
@@ -1405,7 +1419,7 @@ impl Geyser for GrpcService {
                 .is_blockhash_valid(&req.blockhash, req.commitment)
                 .await
         } else {
-            Err(Status::unimplemented("method disabled"))
+            Err(format_status_error(Code::Unimplemented, "method disabled"))
         }
     }
 
