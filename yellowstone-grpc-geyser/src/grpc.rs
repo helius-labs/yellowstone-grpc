@@ -71,9 +71,13 @@ pub struct MessageAccountInfo {
 
 fn format_status_error(code: Code, message: impl Into<String>) -> Status {
     let message = message.into();
-    match serde_json::to_string(&message) {
+    let formatted_message = format!("status: {}, message: \"{}\"", code, message);
+    match serde_json::to_string(&formatted_message) {
         Ok(escaped_message) => Status::new(code, escaped_message),
-        Err(_) => Status::new(code, "unknown error".to_string()),
+        Err(_) => Status::new(
+            code,
+            "status: unknown, message: \"unknown error\"".to_string(),
+        ),
     }
 }
 
