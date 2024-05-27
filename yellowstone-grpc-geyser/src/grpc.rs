@@ -69,16 +69,12 @@ pub struct MessageAccountInfo {
     pub txn_signature: Option<Signature>,
 }
 
-fn format_status_error(code: Code, message: impl Into<String>) -> Status {
+fn format_and_escape_status_error(code: Code, message: impl Into<String>) -> Status {
     let message = message.into();
     let formatted_message = format!("status: {}, message: \"{}\"", code, message);
-    match serde_json::to_string(&formatted_message) {
-        Ok(escaped_message) => Status::new(code, escaped_message),
-        Err(_) => Status::new(
-            code,
-            "status: unknown, message: \"unknown error\"".to_string(),
-        ),
-    }
+    let escaped_message = serde_json::to_string(&formatted_message)
+        .unwrap_or_else(|_| "\"unknown error\"".to_string());
+    Status::new(code, escaped_message)
 }
 
 impl MessageAccountInfo {
