@@ -16,6 +16,51 @@ The minor version will be incremented upon a breaking change and the patch versi
 
 ### Breaking
 
+## 2024-06-12
+
+- yellowstone-grpc-client-1.15.0+solana.1.18.16
+- yellowstone-grpc-geyser-1.15.0+solana.1.18.16
+- yellowstone-grpc-proto-1.14.0+solana.1.18.16
+- yellowstone-grpc-tools-1.0.0-rc.11+solana.1.18.16
+
+### Features
+
+- solana: update to 1.18.16 ([#361](https://github.com/rpcpool/yellowstone-grpc/pull/361))
+
+## 2024-06-07
+
+- yellowstone-grpc-geyser-1.15.0+solana.1.18.15
+
+### Features
+
+- geyser: add compression option to config ([#356](https://github.com/rpcpool/yellowstone-grpc/pull/356))
+- geyser: add `x-endpoint` to metric `subscriptions_total` ([#358](https://github.com/rpcpool/yellowstone-grpc/pull/358))
+- geyser: check `x-token` for health service too ([#359](https://github.com/rpcpool/yellowstone-grpc/pull/359))
+
+## 2024-06-05
+
+- yellowstone-grpc-geyser-1.14.4+solana.1.18.15
+
+### Features
+
+- geyser: add metric `subscriptions_total` ([#355](https://github.com/rpcpool/yellowstone-grpc/pull/355))
+
+## 2024-06-02
+
+- yellowstone-grpc-client-1.15.0+solana.1.18.15
+- yellowstone-grpc-geyser-1.14.3+solana.1.18.15
+- yellowstone-grpc-proto-1.14.0+solana.1.18.15
+- yellowstone-grpc-tools-1.0.0-rc.11+solana.1.18.15
+
+### Fixes
+
+- geyser: fix getLatestBlockhash unary method ([#349](https://github.com/rpcpool/yellowstone-grpc/pull/349))
+
+### Features
+
+- geyser: add optional x_token check in grpc server ([#345](https://github.com/rpcpool/yellowstone-grpc/pull/345))
+- solana: update to 1.18.15 ([#354](https://github.com/rpcpool/yellowstone-grpc/pull/354))
+
 ## 2024-05-21
 
 - yellowstone-grpc-client-1.15.0+solana.1.18.14

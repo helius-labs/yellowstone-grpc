@@ -5,12 +5,15 @@ use {
             scylladb_batch_sent_inc, scylladb_batch_size_observe, scylladb_batchitem_sent_inc_by,
         },
         types::{
-            AccountUpdate, BlockchainEvent, ProducerId, ProducerInfo, ShardId, ShardOffset,
-            ShardPeriod, Transaction, SHARD_OFFSET_MODULO,
+            AccountUpdate, BlockchainEvent, CommitmentLevel, ProducerId, ProducerInfo, ShardId,
+            ShardOffset, ShardPeriod, Slot, Transaction, SHARD_OFFSET_MODULO, UNDEFINED_SLOT,
         },
     },
     deepsize::DeepSizeOf,
-    futures::future,
+    futures::{
+        future::{self, try_join_all},
+        Future,
+    },
     local_ip_address::{list_afinet_netifas, local_ip},
     scylla::{
         batch::{Batch, BatchType},
@@ -18,8 +21,17 @@ use {
         frame::Compression,
         FromRow, Session, SessionBuilder,
     },
-    std::{collections::BTreeMap, net::IpAddr, sync::Arc, time::Duration},
-    tokio::{task::JoinHandle, time::Instant},
+    std::{
+        collections::{BTreeMap, BTreeSet},
+        net::IpAddr,
+        sync::Arc,
+        time::Duration,
+    },
+    tokio::{
+        sync::mpsc::{error::SendError, Permit},
+        task::{JoinError, JoinHandle},
+        time::Instant,
+    },
     tracing::{error, info, warn},
     uuid::Uuid,
 };
@@ -53,8 +65,8 @@ impl FromRow for LwtSuccess {
 }
 
 const INSERT_PRODUCER_SLOT: &str = r###"
-    INSERT INTO producer_slot_seen (producer_id, slot, created_at)
-    VALUES (?, ?, currentTimestamp())
+    INSERT INTO producer_slot_seen (producer_id, slot, shard_offset_map, created_at)
+    VALUES (?, ?, ?, currentTimestamp())
 "###;
 
 const DROP_PRODUCER_LOCK: &str = r###"
@@ -64,15 +76,16 @@ const DROP_PRODUCER_LOCK: &str = r###"
 "###;
 
 const TRY_ACQUIRE_PRODUCER_LOCK: &str = r###"
-    INSERT INTO producer_lock (producer_id, lock_id, ifname, ipv4, created_at)
-    VALUES (?, ?, ?, ?, currentTimestamp())
+    INSERT INTO producer_lock (producer_id, lock_id, ifname, ipv4, is_ready, minimum_shard_offset, created_at)
+    VALUES (?, ?, ?, ?, false, null, currentTimestamp())
     IF NOT EXISTS
 "###;
 
 const GET_PRODUCER_INFO_BY_ID: &str = r###"
     SELECT
         producer_id,
-        num_shards
+        num_shards,
+        commitment_level
     FROM producer_info
     WHERE producer_id = ?
 "###;
@@ -124,18 +137,19 @@ pub struct ScyllaSinkConfig {
     pub linger: Duration,
     pub keyspace: String,
     pub ifname: Option<String>,
+    pub commitment_level: CommitmentLevel,
 }
 
 #[allow(clippy::large_enum_variant)]
-#[derive(Debug, Clone, PartialEq)]
-enum ClientCommand {
+#[derive(Debug, PartialEq)]
+enum ShardCommand {
     Shutdown,
     // Add other action if necessary...
     InsertAccountUpdate(AccountUpdate),
     InsertTransaction(Transaction),
 }
 
-/// Represents a shard responsible for processing and batching `ClientCommand` messages
+/// Represents a shard responsible for processing and batching `ShardCommand` messages
 /// before committing them to the database in a background daemon.
 ///
 /// This struct encapsulates the state and behavior required to manage message buffering,
@@ -170,6 +184,8 @@ struct Shard {
 
     /// Duration to linger before flushing the buffer.
     buffer_linger: Duration,
+
+    last_committed_period: ShardPeriod,
 }
 
 impl Shard {
@@ -198,6 +214,7 @@ impl Shard {
             scylla_batch: Batch::new(BatchType::Unlogged),
             buffer_linger,
             curr_batch_byte_size: 0,
+            last_committed_period: -1,
         }
     }
 
@@ -225,22 +242,19 @@ impl Shard {
         Ok(())
     }
 
-    /// Converts the current `Shard` instance into a background daemon for processing and batching `ClientCommand` messages.
+    /// Converts the current `Shard` instance into a background daemon for processing and batching `ShardCommand` messages.
     ///
     /// This method spawns an asynchronous task (`tokio::spawn`) to continuously receive messages from a channel (`receiver`),
     /// batch process them, and commit periods to the database. It handles message buffering
     /// and period commitment based on the configured buffer settings and period boundaries.
     ///
     /// # Returns
-    /// Returns a `Sender` channel (`tokio::sync::mpsc::Sender<ClientCommand>`) that can be used to send `ClientCommand` messages
+    /// Returns a `Sender` channel (`tokio::sync::mpsc::Sender<ShardCommand>`) that can be used to send `ShardCommand` messages
     /// to the background daemon for processing and batching.
-    fn into_daemon(
-        mut self,
-    ) -> (
-        tokio::sync::mpsc::Sender<ClientCommand>,
-        JoinHandle<anyhow::Result<()>>,
-    ) {
-        let (sender, mut receiver) = tokio::sync::mpsc::channel::<ClientCommand>(16);
+    fn into_daemon(mut self) -> ShardHandle {
+        let (sender, mut receiver) = tokio::sync::mpsc::channel::<ShardCommand>(16);
+        let shard_id = self.shard_id;
+        let (wsender, wreceiver) = tokio::sync::watch::channel(self.next_offset - 1);
 
         let handle: JoinHandle<anyhow::Result<()>> = tokio::spawn(async move {
             let insert_event_ps = self.session.prepare(INSERT_BLOCKCHAIN_EVENT).await?;
@@ -252,13 +266,17 @@ impl Shard {
                 let producer_id = self.producer_id;
                 let offset = self.next_offset;
                 let curr_period = offset / SHARD_OFFSET_MODULO;
+                let prev_period = curr_period - 1;
 
                 // If we started a new period
-                if offset % SHARD_OFFSET_MODULO == 0 && offset > 0 {
+                if offset % SHARD_OFFSET_MODULO == 0
+                    && offset > 0
+                    && self.last_committed_period != prev_period
+                {
                     // Make sure the last period is committed
                     let t = Instant::now();
                     self.session
-                        .execute(&commit_period_ps, (producer_id, shard_id, curr_period - 1))
+                        .execute(&commit_period_ps, (producer_id, shard_id, prev_period))
                         .await?;
                     info!(
                         shard = shard_id,
@@ -266,20 +284,25 @@ impl Shard {
                         committed_period = curr_period,
                         time_to_commit = ?t.elapsed()
                     );
+                    self.last_committed_period = prev_period;
                 }
 
-                self.next_offset += 1;
                 let msg = receiver
                     .recv()
                     .await
                     .ok_or(anyhow::anyhow!("Shard mailbox closed"))?;
 
                 let maybe_blockchain_event = match msg {
-                    ClientCommand::Shutdown => None,
-                    ClientCommand::InsertAccountUpdate(acc_update) => {
+                    ShardCommand::Shutdown => {
+                        warn!("Shard {} received shutdown command.", shard_id);
+                        self.flush().await?;
+                        warn!("shard {} finished shutdown procedure", shard_id);
+                        return Ok(());
+                    }
+                    ShardCommand::InsertAccountUpdate(acc_update) => {
                         Some(acc_update.as_blockchain_event(shard_id, producer_id, offset))
                     }
-                    ClientCommand::InsertTransaction(new_tx) => {
+                    ShardCommand::InsertTransaction(new_tx) => {
                         Some(new_tx.as_blockchain_event(shard_id, producer_id, offset))
                     }
                 };
@@ -299,22 +322,60 @@ impl Shard {
                     self.buffer.push(blockchain_event);
                     self.scylla_batch.append_statement(insert_event_ps.clone());
                     self.curr_batch_byte_size += msg_byte_size;
-                } else {
-                    warn!("Shard {} received shutdown command.", shard_id);
-                    self.flush().await?;
-                    warn!("shard {} finished shutdown procedure", shard_id);
-                    return Ok(());
+                    wsender
+                        .send(offset)
+                        .map_err(|_offset| anyhow::anyhow!("failed to notify committed offset"))?;
+                    self.next_offset += 1;
                 }
             }
         });
-        (sender, handle)
+
+        ShardHandle {
+            shard_id,
+            sender,
+            tokio_handle: handle,
+            shard_offset_watch: wreceiver,
+        }
+    }
+}
+
+struct ShardHandle {
+    shard_id: ShardId,
+    sender: tokio::sync::mpsc::Sender<ShardCommand>,
+    tokio_handle: JoinHandle<anyhow::Result<()>>,
+    shard_offset_watch: tokio::sync::watch::Receiver<ShardOffset>,
+}
+
+impl ShardHandle {
+    async fn reserve(&self) -> Result<Permit<'_, ShardCommand>, SendError<()>> {
+        self.sender.reserve().await
+    }
+
+    async fn send(&self, value: ShardCommand) -> Result<(), SendError<ShardCommand>> {
+        self.sender.send(value).await
+    }
+
+    fn get_last_committed_offset(&self) -> ShardOffset {
+        self.shard_offset_watch.borrow().to_owned()
+    }
+}
+
+impl Future for ShardHandle {
+    type Output = Result<anyhow::Result<()>, JoinError>;
+
+    fn poll(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Self::Output> {
+        let handle = &mut self.tokio_handle;
+        tokio::pin!(handle);
+        handle.poll(cx)
     }
 }
 
 pub struct ScyllaSink {
-    router_sender: tokio::sync::mpsc::Sender<ClientCommand>,
+    router_sender: tokio::sync::mpsc::Sender<ShardCommand>,
     router_handle: JoinHandle<anyhow::Result<()>>,
-    shard_handles: Vec<JoinHandle<anyhow::Result<()>>>,
     producer_lock: ProducerLock,
 }
 
@@ -343,7 +404,7 @@ pub(crate) async fn get_max_shard_offsets_for_producer(
     session: Arc<Session>,
     producer_id: ProducerId,
     num_shards: usize,
-) -> anyhow::Result<Vec<(ShardId, ShardOffset)>> {
+) -> anyhow::Result<Vec<(ShardId, ShardOffset, Slot)>> {
     let cql_shard_list = (0..num_shards)
         .map(|shard_id| format!("{shard_id}"))
         .collect::<Vec<_>>()
@@ -378,7 +439,8 @@ pub(crate) async fn get_max_shard_offsets_for_producer(
 
     let query_max_offset_for_shard_period = r###"
         SELECT
-            offset
+            offset,
+            slot
         FROM log
         WHERE 
             producer_id = ?
@@ -396,15 +458,14 @@ pub(crate) async fn get_max_shard_offsets_for_producer(
                 let ps = max_offset_for_shard_period_ps.clone();
                 let session = Arc::clone(&session);
                 async move {
-                    let max_offset = session
+                    let (max_offset, slot) = session
                         .execute(&ps, (producer_id, shard_id, curr_period))
                         .await?
-                        .maybe_first_row_typed::<(ShardOffset,)>()?
-                        .map(|tuple| tuple.0)
+                        .maybe_first_row_typed::<(ShardOffset, Slot)>()?
                         // If row is None, it means no period has started since the last period commit.
                         // So we seek at the end of the previous period.
-                        .unwrap_or((curr_period * SHARD_OFFSET_MODULO) - 1);
-                    Ok::<_, anyhow::Error>((*shard_id, max_offset))
+                        .unwrap_or(((curr_period * SHARD_OFFSET_MODULO) - 1, UNDEFINED_SLOT));
+                    Ok::<_, anyhow::Error>((*shard_id, max_offset, slot))
                 }
             },
         ))
@@ -419,9 +480,9 @@ pub(crate) async fn get_max_shard_offsets_for_producer(
     Ok(shard_max_offset_pairs)
 }
 
-/// Spawns a round-robin dispatcher for sending `ClientCommand` messages to a list of shard mailboxes.
+/// Spawns a round-robin dispatcher for sending `ShardCommand` messages to a list of shard mailboxes.
 ///
-/// This function takes a vector of shard mailboxes (`tokio::sync::mpsc::Sender<ClientCommand>`) and returns
+/// This function takes a vector of shard mailboxes (`tokio::sync::mpsc::Sender<ShardCommand>`) and returns
 /// a new `Sender` that can be used to dispatch messages in a round-robin fashion to the provided shard mailboxes.
 ///
 /// The dispatcher cycles through the shard mailboxes indefinitely, ensuring each message is sent to the next
@@ -432,13 +493,13 @@ pub(crate) async fn get_max_shard_offsets_for_producer(
 /// - `shard_mailboxes`: A vector of `Sender` channels representing shard mailboxes to dispatch messages to.
 ///
 /// # Returns
-/// A `Sender` channel that can be used to send `ClientCommand` messages to the shard mailboxes in a round-robin manner.
+/// A `Sender` channel that can be used to send `ShardCommand` messages to the shard mailboxes in a round-robin manner.
 fn spawn_round_robin(
     session: Arc<Session>,
     producer_id: ProducerId,
-    shard_mailboxes: Vec<tokio::sync::mpsc::Sender<ClientCommand>>,
+    shard_handles: Vec<ShardHandle>,
 ) -> (
-    tokio::sync::mpsc::Sender<ClientCommand>,
+    tokio::sync::mpsc::Sender<ShardCommand>,
     JoinHandle<anyhow::Result<()>>,
 ) {
     let (sender, mut receiver) = tokio::sync::mpsc::channel(DEFAULT_SHARD_MAX_BUFFER_CAPACITY);
@@ -446,39 +507,59 @@ fn spawn_round_robin(
     let h: JoinHandle<anyhow::Result<()>> = tokio::spawn(async move {
         let insert_slot_ps = session.prepare(INSERT_PRODUCER_SLOT).await?;
 
+        // One hour worth of slots
+        const SLOT_SEEN_RETENTION: usize = 9000;
         //session.execute(&insert_slot_ps, (producer_id,)).await?;
 
-        let iterator = shard_mailboxes.iter().enumerate().cycle();
+        let iterator = shard_handles.iter().enumerate().cycle();
         info!("Started round robin router");
         let mut msg_between_slot = 0;
         let mut max_slot_seen = -1;
         let mut time_since_new_max_slot = Instant::now();
-        let mut background_commit_max_slot_seen =
+        let mut background_commit_slot_seen =
             tokio::spawn(future::ready(Ok::<(), anyhow::Error>(())));
+
+        let mut slots_seen = BTreeSet::<Slot>::new();
+
         for (i, shard_sender) in iterator {
-            let msg = receiver.recv().await.unwrap_or(ClientCommand::Shutdown);
-            if msg == ClientCommand::Shutdown {
+            let msg = receiver.recv().await.unwrap_or(ShardCommand::Shutdown);
+
+            if msg == ShardCommand::Shutdown {
                 warn!("round robin router's mailbox closed unexpectly.");
                 break;
             }
             let slot = match &msg {
-                ClientCommand::Shutdown => -1,
-                ClientCommand::InsertAccountUpdate(x) => x.slot,
-                ClientCommand::InsertTransaction(x) => x.slot,
+                ShardCommand::Shutdown => -1,
+                ShardCommand::InsertAccountUpdate(x) => x.slot,
+                ShardCommand::InsertTransaction(x) => x.slot,
             };
-            if max_slot_seen < slot {
-                max_slot_seen = slot;
+
+            if slots_seen.insert(slot) {
+                while slots_seen.len() >= SLOT_SEEN_RETENTION {
+                    slots_seen.pop_first();
+                }
+
+                if max_slot_seen > slot {
+                    warn!("Slot {slot} arrived late after seeing {max_slot_seen}");
+                } else {
+                    max_slot_seen = slot;
+                }
                 let time_elapsed_between_last_max_slot = time_since_new_max_slot.elapsed();
                 // We only commit every 3 slot number
 
                 let t = Instant::now();
-                background_commit_max_slot_seen.await??;
+                background_commit_slot_seen.await??;
 
                 let session = Arc::clone(&session);
                 let insert_slot_ps = insert_slot_ps.clone();
-                background_commit_max_slot_seen = tokio::spawn(async move {
+                let shard_offset_pairs = shard_handles
+                    .iter()
+                    .map(|sh| (sh.shard_id, sh.get_last_committed_offset()))
+                    .collect::<Vec<_>>();
+
+                background_commit_slot_seen = tokio::spawn(async move {
                     session
-                        .execute(&insert_slot_ps, (producer_id, slot))
+                        .execute(&insert_slot_ps, (producer_id, slot, shard_offset_pairs))
                         .await?;
 
                     let time_to_commit_slot = t.elapsed();
@@ -502,10 +583,12 @@ fn spawn_round_robin(
             }
         }
         // Send shutdown to all shards
-        for (i, shard_sender) in shard_mailboxes.iter().enumerate() {
+        for (i, shard_sender) in shard_handles.iter().enumerate() {
             warn!("Shutting down shard: {}", i);
-            shard_sender.send(ClientCommand::Shutdown).await?;
+            shard_sender.send(ShardCommand::Shutdown).await?;
         }
+
+        try_join_all(shard_handles.into_iter()).await?;
 
         warn!("End of round robin router");
         Ok(())
@@ -595,6 +678,35 @@ async fn try_acquire_lock(
     }
 }
 
+async fn set_minimum_producer_offsets(
+    session: Arc<Session>,
+    producer_lock: &ProducerLock,
+    minimum_shard_offsets: &[(ShardId, ShardOffset, Slot)],
+) -> anyhow::Result<()> {
+    let ps = session
+        .prepare(
+            r###"
+        UPDATE producer_lock
+        SET minimum_shard_offset = ?, is_ready = true
+        WHERE 
+            producer_id = ?
+        IF EXISTS
+        "###,
+        )
+        .await?;
+
+    let lwt = session
+        .execute(&ps, (minimum_shard_offsets, producer_lock.producer_id))
+        .await?
+        .first_row_typed::<LwtSuccess>()?;
+
+    if let LwtSuccess(false) = lwt {
+        anyhow::bail!("Producer lock is corrupted, it may be cause by concurrent lock acquisition");
+    }
+
+    Ok(())
+}
+
 impl ScyllaSink {
     pub async fn new(
         config: ScyllaSinkConfig,
@@ -618,6 +730,10 @@ impl ScyllaSink {
             .await?
             .unwrap_or_else(|| panic!("producer {:?} has not yet been registered", producer_id));
 
+        if producer_info.commitment_level != config.commitment_level {
+            anyhow::bail!("Commitment level in configuration ({:?}) don't match producer info in database ({:?})", config.commitment_level, producer_info.commitment_level);
+        }
+
         info!("Producer {producer_id:?} is registered");
 
         let producer_lock =
@@ -627,17 +743,27 @@ impl ScyllaSink {
 
         let shard_count = producer_info.num_shards as usize;
 
-        info!("init producer {producer_id:?} period commit log successful.");
-
-        let mut sharders = vec![];
-
+        // On init, we collect where the producer left = max shard offsets
+        // Where we left of, it becomes new earliest offset available.
+        // This is to prevent
         let shard_offsets =
             get_max_shard_offsets_for_producer(Arc::clone(&session), producer_id, shard_count)
                 .await?;
 
+        let result =
+            set_minimum_producer_offsets(Arc::clone(&session), &producer_lock, &shard_offsets)
+                .await;
+        if let Err(e) = result {
+            let result2 = producer_lock.release().await;
+            if let Err(e2) = result2 {
+                error!("Releasing lock failed during error handling: {e2:?}");
+            }
+            anyhow::bail!(e);
+        }
+
         info!("Got back last offsets of all {shard_count} shards");
         let mut shard_handles = Vec::with_capacity(shard_count);
-        for (shard_id, last_offset) in shard_offsets.into_iter() {
+        for (shard_id, last_offset, _slot) in shard_offsets.into_iter() {
             let session = Arc::clone(&session);
             let shard = Shard::new(
                 session,
@@ -648,41 +774,33 @@ impl ScyllaSink {
                 config.batch_size_kb_limit * 1024,
                 config.linger,
             );
-            let (shard_mailbox, shard_handle) = shard.into_daemon();
+            let shard_handle = shard.into_daemon();
             shard_handles.push(shard_handle);
-            sharders.push(shard_mailbox);
         }
 
         let (sender, router_handle) =
-            spawn_round_robin(Arc::clone(&session), producer_id, sharders);
+            spawn_round_robin(Arc::clone(&session), producer_id, shard_handles);
 
         Ok(ScyllaSink {
             router_sender: sender,
             router_handle,
-            shard_handles,
             producer_lock,
         })
     }
 
     pub async fn shutdown(self) -> anyhow::Result<()> {
         warn!("Shutthing down scylla sink...");
-        let router_result = self.router_sender.send(ClientCommand::Shutdown).await;
+        let router_result = self.router_sender.send(ShardCommand::Shutdown).await;
         if router_result.is_err() {
-            error!("router was closed before we could gracefully shutdown all sharders. Sharder should terminate on their own...")
+            error!("router was closed before we could gracefully shutdown all sharders.");
         }
-        if let Ok(Err(e)) = self.router_handle.await {
-            error!("Router error: {e:?}");
+        if let Err(e) = self.router_handle.await? {
+            error!("router error {e}");
         }
-        for (i, shard_handle) in self.shard_handles.into_iter().enumerate() {
-            if let Ok(Err(e)) = shard_handle.await {
-                error!("shard {i} error: {e:?}");
-            }
-        }
-        self.producer_lock.release().await?;
-        Ok(())
+        self.producer_lock.release().await
     }
 
-    async fn inner_log(&mut self, cmd: ClientCommand) -> anyhow::Result<()> {
+    async fn inner_log(&mut self, cmd: ShardCommand) -> anyhow::Result<()> {
         self.router_sender
             .send(cmd)
             .await
@@ -690,12 +808,12 @@ impl ScyllaSink {
     }
 
     pub async fn log_account_update(&mut self, update: AccountUpdate) -> anyhow::Result<()> {
-        let cmd = ClientCommand::InsertAccountUpdate(update);
+        let cmd = ShardCommand::InsertAccountUpdate(update);
         self.inner_log(cmd).await
     }
 
     pub async fn log_transaction(&mut self, tx: Transaction) -> anyhow::Result<()> {
-        let cmd = ClientCommand::InsertTransaction(tx);
+        let cmd = ShardCommand::InsertTransaction(tx);
         self.inner_log(cmd).await
     }
 }

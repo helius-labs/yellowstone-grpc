@@ -11,8 +11,8 @@ use {
     yellowstone_grpc_proto::{
         prelude::subscribe_update::UpdateOneof,
         yellowstone::log::{
-            yellowstone_log_server::{self, YellowstoneLog, YellowstoneLogServer},
-            EventSubscriptionPolicy,
+            yellowstone_log_server::YellowstoneLogServer, EventSubscriptionPolicy,
+            TimelineTranslationPolicy,
         },
     },
     yellowstone_grpc_tools::{
@@ -23,12 +23,12 @@ use {
             config::{
                 Config, ConfigGrpc2ScyllaDB, ConfigYellowstoneLogServer, ScyllaDbConnectionInfo,
             },
-            consumer::{
-                common::InitialOffsetPolicy,
+            sink::ScyllaSink,
+            types::{CommitmentLevel, Transaction},
+            yellowstone_log::{
+                common::InitialOffset,
                 grpc::{spawn_grpc_consumer, ScyllaYsLog, SpawnGrpcConsumerReq},
             },
-            sink::ScyllaSink,
-            types::Transaction,
         },
         setup_tracing,
     },
@@ -107,7 +107,7 @@ impl ArgsAction {
             .await?;
 
         let session = Arc::new(session);
-        let scylla_ys_log = ScyllaYsLog::new(session);
+        let scylla_ys_log = ScyllaYsLog::new(session).await?;
         let ys_log_server = YellowstoneLogServer::new(scylla_ys_log);
 
         println!("YellowstoneLogServer listening on {}", addr);
@@ -139,18 +139,17 @@ impl ArgsAction {
         let session = Arc::new(session);
         let req = SpawnGrpcConsumerReq {
             consumer_id: String::from("test"),
+            consumer_ip: None,
             account_update_event_filter: None,
             tx_event_filter: None,
             buffer_capacity: None,
             offset_commit_interval: None,
+            event_subscription_policy: EventSubscriptionPolicy::Both,
+            commitment_level: CommitmentLevel::Processed,
+            timeline_translation_policy: TimelineTranslationPolicy::AllowLag,
+            timeline_translation_allowed_lag: None,
         };
-        let mut rx = spawn_grpc_consumer(
-            session,
-            req,
-            InitialOffsetPolicy::Earliest,
-            EventSubscriptionPolicy::Both,
-        )
-        .await?;
+        let mut rx = spawn_grpc_consumer(session, req, InitialOffset::Earliest).await?;
 
         let mut print_tx_secs = Instant::now() + Duration::from_secs(1);
         let mut num_events = 0;
@@ -249,8 +248,8 @@ impl ArgsAction {
                     _ => continue,
                 };
 
-                if result.is_err() {
-                    error!("errror detected in sink...");
+                if let Err(e) = result {
+                    error!("error detected in sink: {e}");
                     break;
                 }
             }

@@ -1,23 +1,24 @@
-use crate::scylladb::types::{BlockchainEventType, ProducerId, ShardId, ShardOffset};
+use crate::scylladb::types::{BlockchainEventType, ConsumerId, ProducerId, ShardOffset, Slot};
 
 pub type OldShardOffset = ShardOffset;
-
-pub type ConsumerId = String;
 
 ///
 /// Initial position in the log when creating a new consumer.
 ///  
-#[derive(Default, Debug, Clone, Copy)]
-pub enum InitialOffsetPolicy {
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InitialOffset {
     Earliest,
     #[default]
     Latest,
-    SlotApprox(i64),
+    SlotApprox {
+        desired_slot: Slot,
+        min_slot: Slot,
+    },
 }
 
 pub struct ConsumerInfo {
     pub consumer_id: ConsumerId,
     pub producer_id: ProducerId,
-    pub initital_shard_offsets: Vec<(ShardId, BlockchainEventType, ShardOffset)>,
+    //pub initital_shard_offsets: Vec<ConsumerShardOffset>,
     pub subscribed_blockchain_event_types: Vec<BlockchainEventType>,
 }

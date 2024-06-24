@@ -1,5 +1,6 @@
 use {
     anyhow::{anyhow, Ok},
+    core::fmt,
     deepsize::DeepSizeOf,
     scylla::{
         cql_to_rust::{FromCqlVal, FromCqlValError},
@@ -16,18 +17,36 @@ use {
     },
 };
 
-pub const SHARD_OFFSET_MODULO: i64 = 10000;
-
 pub type ProgramId = [u8; 32];
-
+pub type Pubkey = [u8; 32];
 pub type Slot = i64;
 pub type ShardId = i16;
 pub type ShardPeriod = i64;
 pub type ShardOffset = i64;
 pub type ProducerId = [u8; 1]; // one byte is enough to assign an id to a machine
-
+pub type ConsumerId = String;
+pub const SHARD_OFFSET_MODULO: i64 = 10000;
 pub const MIN_PROCUDER: ProducerId = [0x00];
 pub const MAX_PRODUCER: ProducerId = [0xFF];
+pub const UNDEFINED_SLOT: Slot = -1;
+
+#[derive(Clone, Debug, PartialEq, Eq, FromRow)]
+pub struct ConsumerInfo {
+    pub consumer_id: ConsumerId,
+    pub producer_id: ProducerId,
+    //pub initital_shard_offsets: Vec<ConsumerShardOffset>,
+    pub subscribed_blockchain_event_types: Vec<BlockchainEventType>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, FromRow)]
+pub struct ConsumerShardOffset {
+    pub consumer_id: ConsumerId,
+    pub producer_id: ProducerId,
+    pub shard_id: ShardId,
+    pub event_type: BlockchainEventType,
+    pub offset: ShardOffset,
+    pub slot: Slot,
+}
 
 #[derive(Clone, Debug, PartialEq, PartialOrd, Eq, Ord, Copy, DeepSizeOf)]
 pub enum BlockchainEventType {
@@ -79,6 +98,72 @@ impl FromCqlVal<CqlValue> for BlockchainEventType {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, PartialOrd, Eq, Ord, Copy)]
+pub enum CommitmentLevel {
+    Processed = 0,
+    Confirmed = 1,
+    Finalized = 2,
+}
+
+impl fmt::Display for CommitmentLevel {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CommitmentLevel::Processed => f.write_str("Processed"),
+            CommitmentLevel::Confirmed => f.write_str("Confirmed"),
+            CommitmentLevel::Finalized => f.write_str("Finalized"),
+        }
+    }
+}
+
+impl From<CommitmentLevel> for i16 {
+    fn from(val: CommitmentLevel) -> Self {
+        match val {
+            CommitmentLevel::Processed => 0,
+            CommitmentLevel::Confirmed => 1,
+            CommitmentLevel::Finalized => 2,
+        }
+    }
+}
+
+impl TryFrom<i16> for CommitmentLevel {
+    type Error = anyhow::Error;
+
+    fn try_from(value: i16) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(CommitmentLevel::Processed),
+            1 => Ok(CommitmentLevel::Confirmed),
+            2 => Ok(CommitmentLevel::Finalized),
+            x => Err(anyhow!(
+                "Unknown CommitmentLevel equivalent for code {:?}",
+                x
+            )),
+        }
+    }
+}
+
+impl SerializeCql for CommitmentLevel {
+    fn serialize<'b>(
+        &self,
+        typ: &scylla::frame::response::result::ColumnType,
+        writer: scylla::serialize::CellWriter<'b>,
+    ) -> Result<
+        scylla::serialize::writers::WrittenCellProof<'b>,
+        scylla::serialize::SerializationError,
+    > {
+        let x: i16 = (*self).into();
+        SerializeCql::serialize(&x, typ, writer)
+    }
+}
+
+impl FromCqlVal<CqlValue> for CommitmentLevel {
+    fn from_cql(cql_val: CqlValue) -> Result<Self, scylla::cql_to_rust::FromCqlValError> {
+        match cql_val {
+            CqlValue::SmallInt(x) => x.try_into().map_err(|_| FromCqlValError::BadVal),
+            _ => Err(FromCqlValError::BadCqlType),
+        }
+    }
+}
+
 #[derive(SerializeRow, Clone, Debug, FromRow, DeepSizeOf, PartialEq)]
 pub struct BlockchainEvent {
     // Common
@@ -114,8 +199,6 @@ pub struct BlockchainEvent {
     pub is_vote: Option<bool>,
     pub tx_index: Option<i64>,
 }
-
-type Pubkey = [u8; 32];
 
 #[derive(SerializeRow, Clone, Debug, DeepSizeOf, PartialEq, Eq)]
 pub struct AccountUpdate {
@@ -955,6 +1038,7 @@ impl From<BlockchainEvent> for AccountUpdate {
 pub struct ProducerInfo {
     pub producer_id: ProducerId,
     pub num_shards: ShardId,
+    pub commitment_level: CommitmentLevel,
 }
 
 impl TryFrom<AccountUpdate> for SubscribeUpdateAccount {

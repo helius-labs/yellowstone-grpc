@@ -1,6 +1,6 @@
 [package]
 name = "yellowstone-grpc-tools"
-version = "1.0.0-rc.11+solana.1.18.14"
+version = "1.0.0-rc.11+solana.1.18.16"
 authors = { workspace = true }
 edition = { workspace = true }
 description = "Yellowstone gRPC Tools"
@@ -30,6 +30,7 @@ chrono = { workspace = true, optional = true }
 clap = { workspace = true, features = ["derive"] }
 const-hex = { workspace = true, optional = true }
 deepsize = { workspace = true, optional = true }
+etcd-client = { workspace = true, optional = true }
 futures = { workspace = true }
 google-cloud-googleapis = { workspace = true, optional = true }
 google-cloud-pubsub = { workspace = true, optional = true }
@@ -44,6 +45,7 @@ serde_json = { workspace = true }
 serde_with = { workspace = true, optional = true }
 serde_yaml = { workspace = true }
 sha2 = { workspace = true, optional = true }
+thiserror = { workspace = true, optional = true }
 tokio = { workspace = true, features = ["signal", "time"] }
 tokio-stream = { workspace = true }
 tonic = { workspace = true, features = ["gzip"] }
@@ -74,4 +76,4 @@ vergen = { workspace = true, features = ["build", "rustc"] }
 default = ["google-pubsub", "kafka"]
 google-pubsub = ["google-cloud-googleapis", "google-cloud-pubsub"]
 kafka = ["const-hex", "rdkafka", "sha2"]
-scylladb = ["scylla", "serde_with", "deepsize", "uuid", "local-ip-address", "chrono"]
+scylladb = ["scylla", "serde_with", "deepsize", "uuid", "local-ip-address", "chrono", "thiserror", "etcd-client"]
