@@ -1,9 +1,9 @@
-import yargs from "yargs";
 import Client, {
   CommitmentLevel,
   SubscribeRequest,
   SubscribeRequestFilterAccountsFilter,
 } from "@triton-one/yellowstone-grpc";
+import yargs from "yargs";
 
 async function main() {
   const args = parseCommandLineArgs();
