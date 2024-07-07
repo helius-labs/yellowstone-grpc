@@ -42,7 +42,10 @@ async function main() {
       break;
 
     case "subscribe":
-      await subscribeCommand(client, args);
+      const numStreams = 3;
+      for (let i = 0; i < numStreams; i++) {
+        subscribeCommand(client, args);
+      }
       break;
 
     default:
@@ -90,7 +93,7 @@ async function subscribeCommand(client, args) {
     accounts: {},
     slots: {},
     transactions: {},
-    transactionsStatus: {},
+    // transactionsStatus: {},
     entry: {},
     blocks: {},
     blocksMeta: {},
@@ -149,14 +152,14 @@ async function subscribeCommand(client, args) {
   }
 
   if (args.transactionsStatus) {
-    request.transactionsStatus.client = {
-      vote: args.transactionsStatusVote,
-      failed: args.transactionsStatusFailed,
-      signature: args.transactionsStatusSignature,
-      accountInclude: args.transactionsStatusAccountInclude,
-      accountExclude: args.transactionsStatusAccountExclude,
-      accountRequired: args.transactionsStatusAccountRequired,
-    };
+    // request.transactionsStatus.client = {
+    //   vote: args.transactionsStatusVote,
+    //   failed: args.transactionsStatusFailed,
+    //   signature: args.transactionsStatusSignature,
+    //   accountInclude: args.transactionsStatusAccountInclude,
+    //   accountExclude: args.transactionsStatusAccountExclude,
+    //   accountRequired: args.transactionsStatusAccountRequired,
+    // };
   }
 
   if (args.entry) {
