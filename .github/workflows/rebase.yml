@@ -10,8 +10,10 @@ jobs:
   git-sync-branches:
     runs-on: ubuntu-latest
     steps:
-      - run: git config --global user.name "GitHub Actions"
-      - run: git config --global user.email "actions@github.com"
+      - name: Setup email
+        run: |
+          git config --global user.email "liam@helius.xyz"
+          git config --global user.name "Helius Infrastructure"
       - name: git-sync
         uses: wei/git-sync@v3
         with:
@@ -22,8 +24,10 @@ jobs:
   git-sync-tags:
     runs-on: ubuntu-latest
     steps:
-      - run: git config --global user.name "GitHub Actions"
-      - run: git config --global user.email "actions@github.com"
+      - name: Setup email
+        run: |
+          git config --global user.email "liam@helius.xyz"
+          git config --global user.name "Helius Infrastructure"
       - name: git-sync
         uses: wei/git-sync@v3
         with:
@@ -34,8 +38,10 @@ jobs:
   git-rebase:
     runs-on: ubuntu-latest
     steps:
-      - run: git config --global user.name "GitHub Actions"
-      - run: git config --global user.email "actions@github.com"
+      - name: Setup email
+        run: |
+          git config --global user.email "liam@helius.xyz"
+          git config --global user.name "Helius Infrastructure"
       - name: git-rebase
         uses: tiacsys/git-rebase@v1.0.1
         with:
