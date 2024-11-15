@@ -10,6 +10,7 @@ jobs:
   git-sync-branches:
     runs-on: ubuntu-latest
     steps:
+      - uses: fregante/setup-git-user@v2
       - name: git-sync
         uses: wei/git-sync@v3
         with:
@@ -20,6 +21,7 @@ jobs:
   git-sync-tags:
     runs-on: ubuntu-latest
     steps:
+      - uses: fregante/setup-git-user@v2
       - name: git-sync
         uses: wei/git-sync@v3
         with:
@@ -30,6 +32,7 @@ jobs:
   git-rebase:
     runs-on: ubuntu-latest
     steps:
+      - uses: fregante/setup-git-user@v2
       - name: git-rebase
         uses: tiacsys/git-rebase@v1.0.1
         with:
