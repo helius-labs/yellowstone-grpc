@@ -31,7 +31,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: git-rebase
-        uses: tiacsys/git-rebase@v3
+        uses: tiacsys/git-rebase@v1.0.1
         with:
           repo: "https://github.com/rpcpool/yellowstone-grpc"
           source_branch: "master"
