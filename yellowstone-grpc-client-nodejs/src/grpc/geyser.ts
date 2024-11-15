@@ -76,6 +76,7 @@ export interface SubscribeRequest {
   commitment?: CommitmentLevel | undefined;
   accountsDataSlice: SubscribeRequestAccountsDataSlice[];
   ping?: SubscribeRequestPing | undefined;
+  startSlot?: string | undefined;
 }
 
 export interface SubscribeRequest_AccountsEntry {
