@@ -23,6 +23,8 @@ jobs:
         run: git remote add upstream https://github.com/rpcpool/yellowstone-grpc
       - name: Fetch upstream
         run: git fetch --all --tags
+      - name: pull origin
+        run: git pull origin master
       - name: rebase master
         run: git pull upstream master --rebase
       - name: push all
