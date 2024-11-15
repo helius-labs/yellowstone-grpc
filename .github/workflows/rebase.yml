@@ -10,7 +10,6 @@ jobs:
   git-sync-branches:
     runs-on: ubuntu-latest
     steps:
-      - uses: fregante/setup-git-user@v2
       - name: git-sync
         uses: wei/git-sync@v3
         with:
@@ -18,10 +17,12 @@ jobs:
           destination_repo: "https://github.com/helius-labs/yellowstone-grpc"
           source_branch: "refs/remotes/source/*"
           destination_branch: "refs/heads/*"
+          git_config: |
+            user.name=GitHub Actions
+            user.email=actions@github.com
   git-sync-tags:
     runs-on: ubuntu-latest
     steps:
-      - uses: fregante/setup-git-user@v2
       - name: git-sync
         uses: wei/git-sync@v3
         with:
@@ -29,13 +30,18 @@ jobs:
           destination_repo: "https://github.com/helius-labs/yellowstone-grpc"
           source_branch: "refs/remotes/source/*"
           destination_branch: "refs/heads/*"
+          git_config: |
+            user.name=GitHub Actions
+            user.email=actions@github.com
   git-rebase:
     runs-on: ubuntu-latest
     steps:
-      - uses: fregante/setup-git-user@v2
       - name: git-rebase
         uses: tiacsys/git-rebase@v1.0.1
         with:
           repo: "https://github.com/rpcpool/yellowstone-grpc"
           source_branch: "master"
           destination_branch: "master"
+          git_config: |
+            user.name=GitHub Actions
+            user.email=actions@github.com
