@@ -24,7 +24,7 @@ jobs:
       - name: Fetch upstream
         run: git fetch --all --tags
       - name: rebase master
-        run: git rebase upstream/master
+        run: git pull upstream master --rebase
       - name: push all
         run: git push origin --all
       - name: push tags
