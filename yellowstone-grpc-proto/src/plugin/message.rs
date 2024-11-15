@@ -41,6 +41,10 @@ impl From<SlotStatus> for CommitmentLevel {
             SlotStatus::Processed => Self::Processed,
             SlotStatus::Confirmed => Self::Confirmed,
             SlotStatus::Rooted => Self::Finalized,
+            SlotStatus::FirstShredReceived => Self::Processed,
+            SlotStatus::Completed => Self::Processed,
+            SlotStatus::CreatedBank => Self::Processed,
+            SlotStatus::Dead(_) => Self::Processed,
         }
     }
 }
