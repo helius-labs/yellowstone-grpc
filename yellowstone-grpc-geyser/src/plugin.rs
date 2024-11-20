@@ -21,7 +21,7 @@ use {
         runtime::{Builder, Runtime},
         sync::{mpsc, Notify},
     },
-    yellowstone_grpc_proto::plugin::message::Message,
+    yellowstone_grpc_proto::plugin::message::{Message, MessageSlot},
 };
 
 #[derive(Debug)]
@@ -175,8 +175,10 @@ impl GeyserPlugin for Plugin {
         status: &SlotStatus,
     ) -> PluginResult<()> {
         self.with_inner(|inner| {
-            let message = Message::Slot((slot, parent, status.clone()).into());
-            inner.send_message(message);
+            let message = MessageSlot::maybe_from(slot, parent, status.clone());
+            if let Some(message) = message {
+                inner.send_message(Message::Slot(message));
+            }
             metrics::update_slot_status(status, slot);
             Ok(())
         })
