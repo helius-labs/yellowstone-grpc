@@ -17,11 +17,7 @@ keywords = ["solana"]
 publish = false
 
 [workspace.dependencies]
-<<<<<<< HEAD
-agave-geyser-plugin-interface = "=2.0.13"
-=======
 agave-geyser-plugin-interface = { git = "https://github.com/helius-labs/agave", branch = "master" }
->>>>>>> master-2.2
 anyhow = "1.0.62"
 backoff = "0.4.0"
 base64 = "0.22.1"
@@ -53,17 +49,10 @@ protobuf-src = "1.1.0"
 scylla = "0.13.0"
 serde = "1.0.145"
 serde_json = "1.0.86"
-<<<<<<< HEAD
-solana-account-decoder = "=2.0.13"
-solana-logger = "=2.0.13"
-solana-sdk = "=2.0.13"
-solana-transaction-status = "=2.0.13"
-=======
 solana-account-decoder = { git = "https://github.com/helius-labs/agave", branch = "master" }
 solana-logger = { git = "https://github.com/helius-labs/agave", branch = "master" }
 solana-sdk = { git = "https://github.com/helius-labs/agave", branch = "master" }
 solana-transaction-status = { git = "https://github.com/helius-labs/agave", branch = "master" }
->>>>>>> master-2.2
 spl-token-2022 = "4.0.0"
 thiserror = "1.0.69"
 tokio = "1.21.2"
