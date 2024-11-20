@@ -19,12 +19,30 @@ pub enum CommitmentLevel {
     Finalized,
 }
 
-impl From<SlotStatus> for CommitmentLevel {
-    fn from(status: SlotStatus) -> Self {
+// impl From<SlotStatus> for CommitmentLevel {
+//     fn from(status: SlotStatus) -> Self {
+//         match status {
+//             SlotStatus::Processed => Self::Processed,
+//             SlotStatus::Confirmed => Self::Confirmed,
+//             SlotStatus::Rooted => Self::Finalized,
+//             SlotStatus::FirstShredReceived => Self::Processed,
+//             SlotStatus::Completed => Self::Processed,
+//             SlotStatus::CreatedBank => Self::Processed,
+//             SlotStatus::Dead(_) => Self::Processed,
+//         }
+//     }
+// }
+
+impl CommitmentLevel {
+    fn maybe_from(status: SlotStatus) -> Option<Self> {
         match status {
-            SlotStatus::Processed => Self::Processed,
-            SlotStatus::Confirmed => Self::Confirmed,
-            SlotStatus::Rooted => Self::Finalized,
+            SlotStatus::Processed => Some(Self::Processed),
+            SlotStatus::Confirmed => Some(Self::Confirmed),
+            SlotStatus::Rooted => Some(Self::Finalized),
+            SlotStatus::FirstShredReceived => None,
+            SlotStatus::Completed => None,
+            SlotStatus::CreatedBank => None,
+            SlotStatus::Dead(_) => None,
         }
     }
 }
@@ -67,13 +85,19 @@ pub struct MessageSlot {
     pub status: CommitmentLevel,
 }
 
-impl From<(u64, Option<u64>, SlotStatus)> for MessageSlot {
-    fn from((slot, parent, status): (u64, Option<u64>, SlotStatus)) -> Self {
-        Self {
-            slot,
-            parent,
-            status: status.into(),
-        }
+// impl From<(u64, Option<u64>, SlotStatus)> for MessageSlot {
+//     fn from((slot, parent, status): (u64, Option<u64>, SlotStatus)) -> Self {
+//         Self {
+//             slot,
+//             parent,
+//             status: status.into(),
+//         }
+//     }
+// }
+
+impl MessageSlot {
+    pub fn maybe_from(slot: u64, parent: Option<u64>, status: SlotStatus) -> Option<Self> {
+        CommitmentLevel::maybe_from(status).map(|status| Self { slot, parent, status })
     }
 }
 
