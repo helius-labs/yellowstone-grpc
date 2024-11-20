@@ -65,14 +65,8 @@ dependencies = [
 
 [[package]]
 name = "agave-geyser-plugin-interface"
-<<<<<<< HEAD
-version = "2.0.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "14e315bd6da6774dc6a628acd72c6378f9f1051339ce7aa44d825a07583b7abc"
-=======
 version = "2.2.0"
 source = "git+https://github.com/helius-labs/agave?branch=master#9c60bd0c458fd1e9cfd3f402ebb8d988926f3789"
->>>>>>> master-2.2
 dependencies = [
  "log",
  "solana-sdk",
@@ -3119,14 +3113,8 @@ dependencies = [
 
 [[package]]
 name = "solana-account-decoder"
-<<<<<<< HEAD
-version = "2.0.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "41d87c6ef8c13eb759fa8d887e12c67afd851799050b6afd501a27726551f52e"
-=======
 version = "2.2.0"
 source = "git+https://github.com/helius-labs/agave?branch=master#9c60bd0c458fd1e9cfd3f402ebb8d988926f3789"
->>>>>>> master-2.2
 dependencies = [
  "Inflector",
  "base64 0.22.1",
@@ -3249,14 +3237,8 @@ dependencies = [
 
 [[package]]
 name = "solana-compute-budget"
-<<<<<<< HEAD
-version = "2.0.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5acde49a883ca3e099a8050ad8321ea56b02041995dadcf84b0dab14561cc34a"
-=======
 version = "2.2.0"
 source = "git+https://github.com/helius-labs/agave?branch=master#9c60bd0c458fd1e9cfd3f402ebb8d988926f3789"
->>>>>>> master-2.2
 dependencies = [
  "solana-fee-structure",
  "solana-program-entrypoint",
@@ -3264,14 +3246,8 @@ dependencies = [
 
 [[package]]
 name = "solana-config-program"
-<<<<<<< HEAD
-version = "2.0.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f638e44fb308bdc1ce99eb0fee194b2cb212917b258999cdb4a8b056d48973d4"
-=======
 version = "2.2.0"
 source = "git+https://github.com/helius-labs/agave?branch=master#9c60bd0c458fd1e9cfd3f402ebb8d988926f3789"
->>>>>>> master-2.2
 dependencies = [
  "bincode",
  "chrono",
@@ -3298,14 +3274,8 @@ dependencies = [
 
 [[package]]
 name = "solana-curve25519"
-<<<<<<< HEAD
-version = "2.0.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "44b61d8eda3319deca3627e3eb3970ce2ad179ad39c106d6c003d06c90e3031d"
-=======
 version = "2.2.0"
 source = "git+https://github.com/helius-labs/agave?branch=master#9c60bd0c458fd1e9cfd3f402ebb8d988926f3789"
->>>>>>> master-2.2
 dependencies = [
  "bytemuck",
  "bytemuck_derive",
@@ -3315,16 +3285,9 @@ dependencies = [
 ]
 
 [[package]]
-<<<<<<< HEAD
-name = "solana-logger"
-version = "2.0.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c6b996befdb2bdbd816524fc7afe0e158fced33ff61c36ab29ae803c0462455d"
-=======
 name = "solana-decode-error"
 version = "2.2.0"
 source = "git+https://github.com/helius-labs/agave?branch=master#9c60bd0c458fd1e9cfd3f402ebb8d988926f3789"
->>>>>>> master-2.2
 dependencies = [
  "num-traits",
 ]
@@ -3509,21 +3472,6 @@ dependencies = [
 
 [[package]]
 name = "solana-measure"
-<<<<<<< HEAD
-version = "2.0.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "79d44cdbcf9e1489564cdae1cd92b8806b0ee89d05d36a58fef8c0d293ea7c2a"
-dependencies = [
- "log",
- "solana-sdk",
-]
-
-[[package]]
-name = "solana-metrics"
-version = "2.0.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "68979964a3a004f1af4f1571814817e7e050ef4c1b2a1bdaa3ff35e980072d69"
-=======
 version = "2.2.0"
 source = "git+https://github.com/helius-labs/agave?branch=master#9c60bd0c458fd1e9cfd3f402ebb8d988926f3789"
 
@@ -3531,7 +3479,6 @@ source = "git+https://github.com/helius-labs/agave?branch=master#9c60bd0c458fd1e
 name = "solana-metrics"
 version = "2.2.0"
 source = "git+https://github.com/helius-labs/agave?branch=master#9c60bd0c458fd1e9cfd3f402ebb8d988926f3789"
->>>>>>> master-2.2
 dependencies = [
  "crossbeam-channel",
  "gethostname",
@@ -3543,12 +3490,6 @@ dependencies = [
 ]
 
 [[package]]
-<<<<<<< HEAD
-name = "solana-program"
-version = "2.0.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "29249ce5b5c7bd018013adbb97439b0b1b986f16bb07c54db28f82e97baaa2f1"
-=======
 name = "solana-msg"
 version = "2.2.0"
 source = "git+https://github.com/helius-labs/agave?branch=master#9c60bd0c458fd1e9cfd3f402ebb8d988926f3789"
@@ -3610,7 +3551,6 @@ dependencies = [
 name = "solana-program"
 version = "2.2.0"
 source = "git+https://github.com/helius-labs/agave?branch=master#9c60bd0c458fd1e9cfd3f402ebb8d988926f3789"
->>>>>>> master-2.2
 dependencies = [
  "base64 0.22.1",
  "bincode",
@@ -3732,14 +3672,8 @@ dependencies = [
 
 [[package]]
 name = "solana-program-runtime"
-<<<<<<< HEAD
-version = "2.0.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "948bfeb10ba38b55a8b2db2de8ccfa8f57b44b6d73c98e8e0de8b10f10ce043b"
-=======
 version = "2.2.0"
 source = "git+https://github.com/helius-labs/agave?branch=master#9c60bd0c458fd1e9cfd3f402ebb8d988926f3789"
->>>>>>> master-2.2
 dependencies = [
  "base64 0.22.1",
  "bincode",
@@ -3838,14 +3772,8 @@ source = "git+https://github.com/helius-labs/agave?branch=master#9c60bd0c458fd1e
 
 [[package]]
 name = "solana-sdk"
-<<<<<<< HEAD
-version = "2.0.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "24dae5bda29858add4df3a6c5eaf71c0d2042ca3317a9fd81d7e9f436278a1fe"
-=======
 version = "2.2.0"
 source = "git+https://github.com/helius-labs/agave?branch=master#9c60bd0c458fd1e9cfd3f402ebb8d988926f3789"
->>>>>>> master-2.2
 dependencies = [
  "bincode",
  "bitflags 2.6.0",
@@ -3926,14 +3854,8 @@ dependencies = [
 
 [[package]]
 name = "solana-sdk-macro"
-<<<<<<< HEAD
-version = "2.0.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "704c9cacc61a5b9b6f717773cf4b3b45a4239dc7fa8c585258fceaf9b8e1cb94"
-=======
 version = "2.2.0"
 source = "git+https://github.com/helius-labs/agave?branch=master#9c60bd0c458fd1e9cfd3f402ebb8d988926f3789"
->>>>>>> master-2.2
 dependencies = [
  "bs58",
  "proc-macro2",
@@ -4122,14 +4044,8 @@ dependencies = [
 
 [[package]]
 name = "solana-transaction-status"
-<<<<<<< HEAD
-version = "2.0.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d51d9d4a6004708f9563a29aa87fdf9960c1e7420b69dd82e8b817cf8f02430b"
-=======
 version = "2.2.0"
 source = "git+https://github.com/helius-labs/agave?branch=master#9c60bd0c458fd1e9cfd3f402ebb8d988926f3789"
->>>>>>> master-2.2
 dependencies = [
  "Inflector",
  "base64 0.22.1",
@@ -4172,14 +4088,8 @@ dependencies = [
 
 [[package]]
 name = "solana-type-overrides"
-<<<<<<< HEAD
-version = "2.0.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2ab21276d6296965dc7181d785075b20e97b6789c76e8376cf363b3e2f7439b6"
-=======
 version = "2.2.0"
 source = "git+https://github.com/helius-labs/agave?branch=master#9c60bd0c458fd1e9cfd3f402ebb8d988926f3789"
->>>>>>> master-2.2
 dependencies = [
  "lazy_static",
  "rand 0.8.5",
@@ -4187,14 +4097,8 @@ dependencies = [
 
 [[package]]
 name = "solana-vote"
-<<<<<<< HEAD
-version = "2.0.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5fa1401a42023379f14af9165954f44ad02888a327dfd2a4abce0f18fa7cfab9"
-=======
 version = "2.2.0"
 source = "git+https://github.com/helius-labs/agave?branch=master#9c60bd0c458fd1e9cfd3f402ebb8d988926f3789"
->>>>>>> master-2.2
 dependencies = [
  "itertools 0.12.1",
  "log",
@@ -4207,14 +4111,8 @@ dependencies = [
 
 [[package]]
 name = "solana-zk-token-sdk"
-<<<<<<< HEAD
-version = "2.0.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a1dd7a8d6843cb3de4c13c2cfec1994519735ea4110b7f36b80b41d57bea1c07"
-=======
 version = "2.2.0"
 source = "git+https://github.com/helius-labs/agave?branch=master#9c60bd0c458fd1e9cfd3f402ebb8d988926f3789"
->>>>>>> master-2.2
 dependencies = [
  "aes-gcm-siv",
  "base64 0.22.1",
@@ -5403,34 +5301,6 @@ dependencies = [
 ]
 
 [[package]]
-<<<<<<< HEAD
-name = "yellowstone-grpc-client-simple"
-version = "2.0.0+solana.2.0.13"
-dependencies = [
- "anyhow",
- "backoff",
- "bincode",
- "bs58",
- "chrono",
- "clap",
- "env_logger 0.11.5",
- "futures",
- "hex",
- "indicatif",
- "log",
- "maplit",
- "serde_json",
- "solana-sdk",
- "solana-transaction-status",
- "tokio",
- "tonic",
- "yellowstone-grpc-client",
- "yellowstone-grpc-proto",
-]
-
-[[package]]
-=======
->>>>>>> master-2.2
 name = "yellowstone-grpc-geyser"
 version = "2.0.0+solana.2.0.13"
 dependencies = [
