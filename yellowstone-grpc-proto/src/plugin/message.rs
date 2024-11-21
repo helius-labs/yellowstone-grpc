@@ -35,30 +35,12 @@ pub enum CommitmentLevel {
     Finalized,
 }
 
-// impl From<SlotStatus> for CommitmentLevel {
-//     fn from(status: SlotStatus) -> Self {
-//         match status {
-//             SlotStatus::Processed => Self::Processed,
-//             SlotStatus::Confirmed => Self::Confirmed,
-//             SlotStatus::Rooted => Self::Finalized,
-//             SlotStatus::FirstShredReceived => Self::Processed,
-//             SlotStatus::Completed => Self::Processed,
-//             SlotStatus::CreatedBank => Self::Processed,
-//             SlotStatus::Dead(_) => Self::Processed,
-//         }
-//     }
-// }
-
 impl CommitmentLevel {
     fn maybe_from(status: SlotStatus) -> Option<Self> {
         match status {
             SlotStatus::Processed => Some(Self::Processed),
             SlotStatus::Confirmed => Some(Self::Confirmed),
             SlotStatus::Rooted => Some(Self::Finalized),
-            SlotStatus::FirstShredReceived => None,
-            SlotStatus::Completed => None,
-            SlotStatus::CreatedBank => None,
-            SlotStatus::Dead(_) => None,
         }
     }
 }
@@ -92,12 +74,14 @@ pub struct MessageSlot {
 
 impl MessageSlot {
     pub fn maybe_from_geyser(slot: Slot, parent: Option<Slot>, status: SlotStatus) -> Option<Self> {
-        let status = CommitmentLevel::maybe_from(status)?
-        Self {
-            slot,
-            parent,
-            status: status.into(),
-        }
+        let status = CommitmentLevel::maybe_from(status)?;
+        Some(
+            Self {
+                slot,
+                parent,
+                status: status.into(),
+            }
+        )
     }
 
     pub fn from_update_oneof(msg: &SubscribeUpdateSlot) -> FromUpdateOneofResult<Self> {

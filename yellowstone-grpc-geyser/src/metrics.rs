@@ -320,10 +320,6 @@ pub fn update_slot_status(status: &SlotStatus, slot: u64) {
             SlotStatus::Processed => "processed",
             SlotStatus::Confirmed => "confirmed",
             SlotStatus::Rooted => "finalized",
-            SlotStatus::FirstShredReceived => "first_shred_received",
-            SlotStatus::Completed => "completed",
-            SlotStatus::CreatedBank => "created_bank",
-            SlotStatus::Dead(_) => "dead",
         }])
         .set(slot as i64);
 }

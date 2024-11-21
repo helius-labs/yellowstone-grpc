@@ -175,14 +175,14 @@ impl GeyserPlugin for Plugin {
         &self,
         slot: u64,
         parent: Option<u64>,
-        status: &SlotStatus,
+        status: SlotStatus,
     ) -> PluginResult<()> {
         self.with_inner(|inner| {
-            let message = Message::Slot(MessageSlot::from_geyser(slot, parent, status));
+            let message = MessageSlot::maybe_from_geyser(slot, parent, status);
             if let Some(message) = message {
                 inner.send_message(Message::Slot(message));
             }
-            metrics::update_slot_status(status, slot);
+            metrics::update_slot_status(&status, slot);
             Ok(())
         })
     }
