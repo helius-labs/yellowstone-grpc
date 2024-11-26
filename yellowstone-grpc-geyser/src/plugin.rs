@@ -180,15 +180,14 @@ impl GeyserPlugin for Plugin {
         parent: Option<u64>,
         status: &SlotStatus,
     ) -> PluginResult<()> {
-        let res = self.with_inner(|inner| {
+        self.with_inner(|inner| {
             let message = MessageSlot::maybe_from(slot, parent, status.clone());
             if let Some(message) = message {
                 inner.send_message(Message::Slot(message));
             }
             metrics::update_slot_status(status, slot);
             Ok(())
-        });
-        res
+        })
     }
 
     fn notify_transaction(
@@ -229,7 +228,7 @@ impl GeyserPlugin for Plugin {
     }
 
     fn notify_block_metadata(&self, blockinfo: ReplicaBlockInfoVersions<'_>) -> PluginResult<()> {
-        let res = self.with_inner(|inner| {
+        self.with_inner(|inner| {
             let blockinfo = match blockinfo {
                 ReplicaBlockInfoVersions::V0_0_1(_info) => {
                     unreachable!("ReplicaBlockInfoVersions::V0_0_1 is not supported")
@@ -247,8 +246,7 @@ impl GeyserPlugin for Plugin {
             inner.send_message(message);
 
             Ok(())
-        });
-        res
+        })
     }
 
     fn account_data_notifications_enabled(&self) -> bool {
