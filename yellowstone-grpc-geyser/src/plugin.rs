@@ -76,13 +76,11 @@ impl GeyserPlugin for Plugin {
             .enable_all()
             .build()
             .map_err(|error| GeyserPluginError::Custom(Box::new(error)))?;
-        println!("Runtime created");
 
         // Monitor node health
-        // let rpc_client = RpcClient::new("http://localhost:8899".to_string());
-        // runtime.spawn(keep_track_of_node_health(rpc_client));
+        let rpc_client = RpcClient::new("http://localhost:8899".to_string());
+        runtime.spawn(keep_track_of_node_health(rpc_client));
 
-        println!("Monitoring node health");
         let (snapshot_channel, grpc_channel, grpc_shutdown, prometheus) =
             runtime.block_on(async move {
                 let (debug_client_tx, debug_client_rx) = mpsc::unbounded_channel();
@@ -107,7 +105,6 @@ impl GeyserPlugin for Plugin {
                     prometheus,
                 ))
             })?;
-        println!("Grpc service created");
 
         self.inner = Some(PluginInner {
             runtime,
@@ -117,7 +114,6 @@ impl GeyserPlugin for Plugin {
             grpc_shutdown,
             prometheus,
         });
-        println!("Plugin inner created");
 
         Ok(())
     }
@@ -137,7 +133,6 @@ impl GeyserPlugin for Plugin {
         slot: u64,
         is_startup: bool,
     ) -> PluginResult<()> {
-        println!("Update account");
         self.with_inner(|inner| {
             let account = match account {
                 ReplicaAccountInfoVersions::V0_0_1(_info) => {
@@ -173,7 +168,6 @@ impl GeyserPlugin for Plugin {
     }
 
     fn notify_end_of_startup(&self) -> PluginResult<()> {
-        println!("Notify end of startup");
         self.with_inner(|inner| {
             let _snapshot_channel = inner.snapshot_channel.lock().unwrap().take();
             Ok(())
@@ -186,20 +180,14 @@ impl GeyserPlugin for Plugin {
         parent: Option<u64>,
         status: &SlotStatus,
     ) -> PluginResult<()> {
-        println!("Update slot status");
         let res = self.with_inner(|inner| {
-            println!("Update slot status message");
             let message = MessageSlot::maybe_from(slot, parent, status.clone());
-            println!("Update slot status message: {:?}", message);
             if let Some(message) = message {
-                println!("Update slot status send message");
                 inner.send_message(Message::Slot(message));
             }
-            println!("Update slot status metr ics");
             metrics::update_slot_status(status, slot);
             Ok(())
         });
-        println!("Update slot status result: {:?}", res);
         res
     }
 
@@ -208,7 +196,6 @@ impl GeyserPlugin for Plugin {
         transaction: ReplicaTransactionInfoVersions<'_>,
         slot: u64,
     ) -> PluginResult<()> {
-        println!("Notify transaction");
         self.with_inner(|inner| {
             let transaction = match transaction {
                 ReplicaTransactionInfoVersions::V0_0_1(_info) => {
@@ -225,7 +212,6 @@ impl GeyserPlugin for Plugin {
     }
 
     fn notify_entry(&self, entry: ReplicaEntryInfoVersions) -> PluginResult<()> {
-        println!("Notify entry");
         self.with_inner(|inner| {
             #[allow(clippy::infallible_destructuring_match)]
             let entry = match entry {
@@ -243,7 +229,6 @@ impl GeyserPlugin for Plugin {
     }
 
     fn notify_block_metadata(&self, blockinfo: ReplicaBlockInfoVersions<'_>) -> PluginResult<()> {
-        println!("Notify block metadata");
         let res = self.with_inner(|inner| {
             let blockinfo = match blockinfo {
                 ReplicaBlockInfoVersions::V0_0_1(_info) => {
@@ -253,7 +238,6 @@ impl GeyserPlugin for Plugin {
                     unreachable!("ReplicaBlockInfoVersions::V0_0_2 is not supported")
                 }
                 ReplicaBlockInfoVersions::V0_0_3(_info) => {
-                    println!("ReplicaBlockInfoVersions::V0_0_3");
                     unreachable!("ReplicaBlockInfoVersions::V0_0_3 is not supported")
                 }
                 ReplicaBlockInfoVersions::V0_0_4(info) => info,
@@ -264,7 +248,6 @@ impl GeyserPlugin for Plugin {
 
             Ok(())
         });
-        println!("Notify block metadata result: {:?}", res);
         res
     }
 

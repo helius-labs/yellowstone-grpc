@@ -839,7 +839,6 @@ impl GrpcService {
                         }
                     }
                     message = messages_rx.recv() => {
-
                         if IS_NODE_UNHEALTHY.load(Ordering::SeqCst) {
                             error!("Latest slot from plugin is lagged, plugin is lagging behind disconnecting client #{id}");
                             stream_tx.send(Err(Status::internal("gRPC plugin is lagging behind. Disconnecting client."))).await.unwrap();
