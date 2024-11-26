@@ -838,6 +838,19 @@ impl GrpcService {
                         }
                     }
                     message = messages_rx.recv() => {
+                        let latest_slot = monitor::LATEST_SLOT.load(Ordering::SeqCst);
+                        if latest_slot > 0 {
+                            if let Ok(last_slot_plugin) = metrics::SLOT_STATUS_PLUGIN
+                                .get_metric_with_label_values(&[commitment_level_as_str(CommitmentLevel::Processed)])
+                            {
+                                let last_updated_slot = last_slot_plugin.get();
+                                if (last_updated_slot + HEALTH_CHECK_SLOT_DISTANCE as i64) < latest_slot as i64 {
+                                    error!("Latest slot from plugin is lagged, plugin is lagging behind disconnecting client #{id}");
+                                    stream_tx.send(Err(Status::internal("gRPC plugin is lagging behind. Disconnecting client."))).await.unwrap();
+                                    break 'outer;
+                                }
+                            }
+                        }
                         let (commitment, messages) = match message {
                             Ok((commitment, messages)) => (commitment, messages),
                             Err(broadcast::error::RecvError::Closed) => {
