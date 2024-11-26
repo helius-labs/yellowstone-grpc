@@ -178,10 +178,8 @@ impl GeyserPlugin for Plugin {
         status: &SlotStatus,
     ) -> PluginResult<()> {
         self.with_inner(|inner| {
-            let message = Message::Slot(MessageSlot::maybe_from_geyser(slot, parent, status));
-            if let Some(message) = message {
-                inner.send_message(Message::Slot(message));
-            }
+            let message = Message::Slot(MessageSlot::from_geyser(slot, parent, status));
+            inner.send_message(message);
             metrics::update_slot_status(status, slot);
             Ok(())
         })
