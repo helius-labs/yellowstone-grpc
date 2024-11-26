@@ -190,11 +190,12 @@ impl GeyserPlugin for Plugin {
         let res = self.with_inner(|inner| {
             println!("Update slot status message");
             let message = MessageSlot::maybe_from(slot, parent, status.clone());
+            println!("Update slot status message: {:?}", message);
             if let Some(message) = message {
                 println!("Update slot status send message");
                 inner.send_message(Message::Slot(message));
             }
-            println!("Update slot status metrics");
+            println!("Update slot status metr ics");
             metrics::update_slot_status(status, slot);
             Ok(())
         });
