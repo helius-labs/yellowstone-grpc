@@ -68,6 +68,11 @@ impl GeyserPlugin for Plugin {
         // Setup logger
         solana_logger::setup_with_default(&config.log.level);
 
+        if let Some(rpc_url) = config.rpc_url {
+            let rpc_client = RpcClient::new(rpc_url);
+            runtime.spawn(update_latest_slot_loop(rpc_client));
+        }
+
         // Create inner
         let runtime = Builder::new_multi_thread()
             .thread_name_fn(crate::get_thread_name)
