@@ -48,6 +48,7 @@ tonic-health = { workspace = true }
 yellowstone-grpc-proto = { workspace = true, features = ["convert", "plugin"] }
 solana-client = { workspace = true }
 once_cell = { workspace = true }
+solana-rpc-client-api = { workspace = true }
 
 [build-dependencies]
 anyhow = { workspace = true }
