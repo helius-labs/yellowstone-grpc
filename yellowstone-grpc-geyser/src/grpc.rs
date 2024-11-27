@@ -3,7 +3,7 @@ use {
         config::{ConfigBlockFailAction, ConfigGrpc, ConfigGrpcFilters},
         filters::Filter,
         metrics::{self, DebugClientMessage},
-        monitor::IS_NODE_UNHEALTHY,
+        monitor::{HEALTH_CHECK_SLOT_DISTANCE, NUM_SLOTS_BEHIND},
         version::GrpcVersionInfo,
     },
     anyhow::Context,
@@ -839,8 +839,8 @@ impl GrpcService {
                         }
                     }
                     message = messages_rx.recv() => {
-                        let is_node_unhealthy = IS_NODE_UNHEALTHY.load(Ordering::SeqCst);
-                        if IS_NODE_UNHEALTHY.load(Ordering::SeqCst) {
+                        let num_slots_behind = NUM_SLOTS_BEHIND.load(Ordering::SeqCst);
+                        if num_slots_behind > HEALTH_CHECK_SLOT_DISTANCE {
                             error!("gRPC node is lagging behind. Disconnecting client #{id}");
                             stream_tx.send(Err(Status::internal("gRPC node is lagging behind. Disconnecting client."))).await.unwrap();
                             break 'outer;
