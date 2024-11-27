@@ -842,7 +842,7 @@ impl GrpcService {
                         let num_slots_behind = NUM_SLOTS_BEHIND.load(Ordering::SeqCst);
                         if num_slots_behind > HEALTH_CHECK_SLOT_DISTANCE {
                             error!("gRPC node is lagging behind. Disconnecting client #{id}");
-                            stream_tx.send(Err(Status::internal("gRPC node is lagging behind. Disconnecting client."))).await.unwrap();
+                            stream_tx.send(Err(Status::internal("Node is significantly behind the chain tip. Disconnecting to maintain service quality. Please reconnect - you will be automatically routed to a healthy node if using a load balancer."))).await.unwrap();
                             break 'outer;
                         }
 
