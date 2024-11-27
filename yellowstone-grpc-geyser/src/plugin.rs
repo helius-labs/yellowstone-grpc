@@ -78,7 +78,7 @@ impl GeyserPlugin for Plugin {
             .map_err(|error| GeyserPluginError::Custom(Box::new(error)))?;
 
         // Monitor node health
-        let rpc_client = RpcClient::new("http://localhost:8899".to_string());
+        let rpc_client = RpcClient::new("http://127.0.0.1:8899".to_string());
         runtime.spawn(keep_track_of_node_health(rpc_client));
 
         let (snapshot_channel, grpc_channel, grpc_shutdown, prometheus) =
