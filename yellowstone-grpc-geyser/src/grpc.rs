@@ -839,6 +839,7 @@ impl GrpcService {
                         }
                     }
                     message = messages_rx.recv() => {
+                        let is_node_unhealthy = IS_NODE_UNHEALTHY.load(Ordering::SeqCst);
                         if IS_NODE_UNHEALTHY.load(Ordering::SeqCst) {
                             error!("gRPC node is lagging behind. Disconnecting client #{id}");
                             stream_tx.send(Err(Status::internal("gRPC node is lagging behind. Disconnecting client."))).await.unwrap();

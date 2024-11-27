@@ -43,10 +43,19 @@ pub async fn keep_track_of_node_health(rpc_client: RpcClient) {
     loop {
         interval.tick().await;
         let blocks_behind = fetch_node_blocks_behind_with_infinite_retry(&rpc_client).await;
-        if blocks_behind > HEALTH_CHECK_SLOT_DISTANCE {
-            IS_NODE_UNHEALTHY.store(true, Ordering::SeqCst);
-        } else {
-            IS_NODE_UNHEALTHY.store(false, Ordering::SeqCst);
+        if blocks_behind != 0 {
+            log::error!("Node is lagging behind by {} slots", blocks_behind);
         }
+        println!("Setting is_node_unhealthy to true");
+        IS_NODE_UNHEALTHY.store(true, Ordering::Relaxed);
+        println!(
+            "Is node unhealthy: {}",
+            IS_NODE_UNHEALTHY.load(Ordering::Relaxed)
+        );
+        // if blocks_behind > HEALTH_CHECK_SLOT_DISTANCE {
+        //     IS_NODE_UNHEALTHY.store(true, Ordering::SeqCst);
+        // } else {
+        //     IS_NODE_UNHEALTHY.store(false, Ordering::SeqCst);
+        // }
     }
 }
