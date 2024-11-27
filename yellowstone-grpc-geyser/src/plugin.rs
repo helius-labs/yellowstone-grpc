@@ -3,12 +3,14 @@ use {
         config::Config,
         grpc::GrpcService,
         metrics::{self, PrometheusService},
+        monitor::keep_track_of_node_health,
     },
     agave_geyser_plugin_interface::geyser_plugin_interface::{
         GeyserPlugin, GeyserPluginError, ReplicaAccountInfoVersions, ReplicaBlockInfoVersions,
         ReplicaEntryInfoVersions, ReplicaTransactionInfoVersions, Result as PluginResult,
         SlotStatus,
     },
+    solana_client::nonblocking::rpc_client::RpcClient,
     std::{
         concat, env,
         sync::{
@@ -74,6 +76,10 @@ impl GeyserPlugin for Plugin {
             .enable_all()
             .build()
             .map_err(|error| GeyserPluginError::Custom(Box::new(error)))?;
+
+        // Monitor node health
+        let rpc_client = RpcClient::new("http://127.0.0.1:8899".to_string());
+        runtime.spawn(keep_track_of_node_health(rpc_client));
 
         let (snapshot_channel, grpc_channel, grpc_shutdown, prometheus) =
             runtime.block_on(async move {

@@ -5,13 +5,13 @@
   },
   "grpc": {
     "address": "0.0.0.0:10000",
-    "tls_config": {
-      "cert_path": "",
-      "key_path": ""
-    },
     "compression": {
-      "accept": ["gzip"],
-      "send": ["gzip"]
+      "accept": [
+        "gzip"
+      ],
+      "send": [
+        "gzip"
+      ]
     },
     "max_decoding_message_size": "4_194_304",
     "snapshot_plugin_channel_capacity": null,
@@ -28,9 +28,13 @@
         "max": 1,
         "any": false,
         "account_max": 10,
-        "account_reject": ["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"],
+        "account_reject": [
+          "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        ],
         "owner_max": 10,
-        "owner_reject": ["11111111111111111111111111111111"],
+        "owner_reject": [
+          "11111111111111111111111111111111"
+        ],
         "data_slice_max": 2
       },
       "slots": {
