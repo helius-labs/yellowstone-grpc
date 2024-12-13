@@ -3,7 +3,7 @@ use {
         config::Config,
         grpc::GrpcService,
         metrics::{self, PrometheusService},
-        monitor::keep_track_of_node_health,
+        monitor::run_forced_disconnection_monitor,
     },
     agave_geyser_plugin_interface::geyser_plugin_interface::{
         GeyserPlugin, GeyserPluginError, ReplicaAccountInfoVersions, ReplicaBlockInfoVersions,
@@ -77,9 +77,15 @@ impl GeyserPlugin for Plugin {
             .build()
             .map_err(|error| GeyserPluginError::Custom(Box::new(error)))?;
 
-        // Monitor node health
-        let rpc_client = RpcClient::new("http://127.0.0.1:8899".to_string());
-        runtime.spawn(keep_track_of_node_health(rpc_client));
+        if config.grpc.force_disconnect_if_node_is_unhealthy {
+            let rpc_client = RpcClient::new(format!(
+                "http://127.0.0.1:{}",
+                config.grpc.rpc_port.expect(
+                    "RPC port is required when force_disconnect_if_node_is_unhealthy is true"
+                )
+            ));
+            runtime.spawn(run_forced_disconnection_monitor(rpc_client));
+        }
 
         let (snapshot_channel, grpc_channel, grpc_shutdown, prometheus) =
             runtime.block_on(async move {

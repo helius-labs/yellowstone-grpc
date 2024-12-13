@@ -3,7 +3,7 @@ use {
         config::{ConfigBlockFailAction, ConfigGrpc, ConfigGrpcFilters},
         filters::Filter,
         metrics::{self, DebugClientMessage},
-        monitor::{HEALTH_CHECK_SLOT_DISTANCE, NUM_SLOTS_BEHIND},
+        monitor::SHOULD_DISCONNECT,
         version::GrpcVersionInfo,
     },
     anyhow::Context,
@@ -839,10 +839,12 @@ impl GrpcService {
                         }
                     }
                     message = messages_rx.recv() => {
-                        let num_slots_behind = NUM_SLOTS_BEHIND.load(Ordering::SeqCst);
-                        if num_slots_behind > HEALTH_CHECK_SLOT_DISTANCE {
+                        if SHOULD_DISCONNECT.load(Ordering::SeqCst) {
                             error!("gRPC node is lagging behind. Disconnecting client #{id}");
-                            stream_tx.send(Err(Status::internal("Node is significantly behind the chain tip. Disconnecting to maintain service quality. Please reconnect - you will be automatically routed to a healthy node if using a load balancer."))).await.unwrap();
+                            stream_tx
+                                .send(Err(Status::internal("Disconnecting since node is lagging behind. If you are connected through a load balancer, please try reconnecting. You might be automatically routed to a healthy node.")))
+                                .await
+                                .unwrap();
                             break 'outer;
                         }
 
@@ -972,6 +974,12 @@ impl Geyser for GrpcService {
         &self,
         mut request: Request<Streaming<SubscribeRequest>>,
     ) -> TonicResult<Response<Self::SubscribeStream>> {
+        if SHOULD_DISCONNECT.load(Ordering::SeqCst) {
+            error!("gRPC node is lagging behind. Preventing client from connecting.");
+            return Err(Status::internal(
+                "Node is lagging behind. If you are connected through a load balancer, please try reconnecting. You might be automatically routed to a healthy node.",
+            ));
+        }
         let id = self.subscribe_id.fetch_add(1, Ordering::Relaxed);
 
         let x_request_snapshot = request.metadata().contains_key("x-request-snapshot");
