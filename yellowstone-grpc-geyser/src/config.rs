@@ -122,6 +122,19 @@ pub struct ConfigGrpc {
         with = "humantime_serde"
     )]
     pub filter_names_cleanup_interval: Duration,
+    /// Disconnect if node is lagging behind
+    #[serde(default)]
+    pub force_disconnect_if_node_is_unhealthy: bool,
+    /// RPC port to use for health monitoring
+    pub rpc_port: Option<u16>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ConfigHealthMonitor {
+    /// Recommended to set as same threshold as the RPC
+    pub max_slot_behind_threshold: u64,
+    pub rpc_port: u16,
 }
 
 impl ConfigGrpc {

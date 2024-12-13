@@ -3,12 +3,14 @@ use {
         config::Config,
         grpc::GrpcService,
         metrics::{self, PrometheusService},
+        monitor::run_forced_disconnection_monitor,
     },
     agave_geyser_plugin_interface::geyser_plugin_interface::{
         GeyserPlugin, GeyserPluginError, ReplicaAccountInfoVersions, ReplicaBlockInfoVersions,
         ReplicaEntryInfoVersions, ReplicaTransactionInfoVersions, Result as PluginResult,
         SlotStatus,
     },
+    solana_client::nonblocking::rpc_client::RpcClient,
     std::{
         concat, env,
         sync::{
@@ -74,6 +76,16 @@ impl GeyserPlugin for Plugin {
             .enable_all()
             .build()
             .map_err(|error| GeyserPluginError::Custom(Box::new(error)))?;
+
+        if config.grpc.force_disconnect_if_node_is_unhealthy {
+            let rpc_client = RpcClient::new(format!(
+                "http://127.0.0.1:{}",
+                config.grpc.rpc_port.expect(
+                    "RPC port is required when force_disconnect_if_node_is_unhealthy is true"
+                )
+            ));
+            runtime.spawn(run_forced_disconnection_monitor(rpc_client));
+        }
 
         let (snapshot_channel, grpc_channel, grpc_shutdown, prometheus) =
             runtime.block_on(async move {
