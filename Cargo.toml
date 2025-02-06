@@ -1,10 +1,10 @@
 [workspace]
 resolver = "2"
 members = [
-    "examples/rust", # 4.3.0+solana.2.1.9
+    "examples/rust",           # 4.3.0+solana.2.1.9
     "yellowstone-grpc-client", # 4.1.0+solana.2.1.9
-    "yellowstone-grpc-geyser", # 4.2.2+solana.2.1.9
-    "yellowstone-grpc-proto", # 4.1.1+solana.2.1.9
+    "yellowstone-grpc-geyser", # master-2.2-latest
+    "yellowstone-grpc-proto",  # 4.1.1+solana.2.1.9
 ]
 exclude = [
     "yellowstone-grpc-client-nodejs/solana-encoding-wasm", # 3.0.0
