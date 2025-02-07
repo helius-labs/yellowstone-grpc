@@ -80,10 +80,13 @@ lto = true
 codegen-units = 1
 
 [patch.crates-io]
-solana-pubkey = { git = "https://github.com/helius-labs/agave", branch = "master-2.2-latest" }
-solana-program = { git = "https://github.com/helius-labs/agave", branch = "master-2.2-latest" }
+solana-cpi = { git = "https://github.com/helius-labs/agave", branch = "master-2.2-latest" }
 solana-instruction = { git = "https://github.com/helius-labs/agave", branch = "master-2.2-latest" }
+solana-program-error = { git = "https://github.com/helius-labs/agave", branch = "master-2.2-latest" }
+solana-pubkey = { git = "https://github.com/helius-labs/agave", branch = "master-2.2-latest" }
+solana-sysvar-id = { git = "https://github.com/helius-labs/agave", branch = "master-2.2-latest" }
+solana-program = { git = "https://github.com/helius-labs/agave", branch = "master-2.2-latest" }
 solana-account-info = { git = "https://github.com/helius-labs/agave", branch = "master-2.2-latest" }
 solana-msg = { git = "https://github.com/helius-labs/agave", branch = "master-2.2-latest" }
 solana-program-entrypoint = { git = "https://github.com/helius-labs/agave", branch = "master-2.2-latest" }
-solana-program-error = { git = "https://github.com/helius-labs/agave", branch = "master-2.2-latest" }
+solana-decode-error = { git = "https://github.com/helius-labs/agave", branch = "master-2.2-latest" }
