@@ -6753,6 +6753,7 @@ dependencies = [
  "solana-sdk 2.2.0",
  "solana-storage-proto",
  "solana-transaction-status",
+ "spl-token-2022 7.0.0",
  "thiserror 1.0.69",
  "tonic",
  "tonic-build 0.12.3",
