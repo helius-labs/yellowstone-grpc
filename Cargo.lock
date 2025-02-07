@@ -5491,7 +5491,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6f8349dbcbe575f354f9a533a21f272f3eb3808a49e2fdc1c34393b88ba76cb"
 dependencies = [
  "solana-instruction 2.1.13",
- "solana-pubkey 2.2.0",
+ "solana-pubkey 2.1.13",
 ]
 
 [[package]]
@@ -5554,7 +5554,7 @@ dependencies = [
  "solana-msg 2.1.13",
  "solana-program-entrypoint 2.1.13",
  "solana-program-error 2.1.13",
- "solana-pubkey 2.2.0",
+ "solana-pubkey 2.1.13",
 ]
 
 [[package]]
@@ -5572,7 +5572,7 @@ dependencies = [
  "solana-msg 2.1.13",
  "solana-program-error 2.1.13",
  "solana-program-option 2.1.13",
- "solana-pubkey 2.2.0",
+ "solana-pubkey 2.1.13",
  "solana-zk-sdk",
  "thiserror 1.0.69",
 ]
@@ -5616,7 +5616,7 @@ dependencies = [
  "solana-instruction 2.1.13",
  "solana-msg 2.1.13",
  "solana-program-error 2.1.13",
- "solana-pubkey 2.2.0",
+ "solana-pubkey 2.1.13",
  "spl-discriminator",
  "spl-pod",
  "spl-program-error",
@@ -5756,7 +5756,7 @@ dependencies = [
  "solana-instruction 2.1.13",
  "solana-msg 2.1.13",
  "solana-program-error 2.1.13",
- "solana-pubkey 2.2.0",
+ "solana-pubkey 2.1.13",
  "spl-discriminator",
  "spl-pod",
  "thiserror 1.0.69",
@@ -5776,7 +5776,7 @@ dependencies = [
  "solana-instruction 2.1.13",
  "solana-msg 2.1.13",
  "solana-program-error 2.1.13",
- "solana-pubkey 2.2.0",
+ "solana-pubkey 2.1.13",
  "spl-discriminator",
  "spl-pod",
  "spl-type-length-value",
@@ -5799,7 +5799,7 @@ dependencies = [
  "solana-instruction 2.1.13",
  "solana-msg 2.1.13",
  "solana-program-error 2.1.13",
- "solana-pubkey 2.2.0",
+ "solana-pubkey 2.1.13",
  "spl-discriminator",
  "spl-pod",
  "spl-program-error",
