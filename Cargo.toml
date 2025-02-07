@@ -80,3 +80,6 @@ trivially_copy_pass_by_ref = "deny"
 [profile.release]
 lto = true
 codegen-units = 1
+
+[patch.crates-io]
+solana-pubkey = { git = "https://github.com/helius-labs/agave", branch = "master-2.2-latest" }
