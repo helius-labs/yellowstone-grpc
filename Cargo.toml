@@ -83,3 +83,4 @@ codegen-units = 1
 
 [patch.crates-io]
 solana-pubkey = { git = "https://github.com/helius-labs/agave", branch = "master-2.2-latest" }
+solana-program = { git = "https://github.com/helius-labs/agave", branch = "master-2.2-latest" }
