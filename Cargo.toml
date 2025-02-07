@@ -90,3 +90,4 @@ solana-account-info = { git = "https://github.com/helius-labs/agave", branch = "
 solana-msg = { git = "https://github.com/helius-labs/agave", branch = "master-2.2-latest" }
 solana-program-entrypoint = { git = "https://github.com/helius-labs/agave", branch = "master-2.2-latest" }
 solana-decode-error = { git = "https://github.com/helius-labs/agave", branch = "master-2.2-latest" }
+solana-zk-sdk = { git = "https://github.com/helius-labs/agave", branch = "master-2.2-latest" }

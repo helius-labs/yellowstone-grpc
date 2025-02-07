@@ -6890,3 +6890,8 @@ dependencies = [
  "cc",
  "pkg-config",
 ]
+
+[[patch.unused]]
+name = "solana-zk-sdk"
+version = "2.2.0"
+source = "git+https://github.com/helius-labs/agave?branch=master-2.2-latest#414fcc05ee8d6c1fc79bcc458defebb0f0ddb29e"
