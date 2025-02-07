@@ -30,7 +30,7 @@ solana-sdk = { workspace = true, optional = true }
 solana-storage-proto = { workspace = true, optional = true }
 solana-transaction-status = { workspace = true, optional = true }
 smallvec = { workspace = true, optional = true }
-spl-token-2022 = { workspace = true, optional = true }
+# spl-token-2022 = { workspace = true, optional = true }
 thiserror = { workspace = true, optional = true }
 tonic = { workspace = true, optional = true }
 
@@ -60,7 +60,7 @@ plugin = [
     "dep:bytes",
     "dep:serde",
     "dep:smallvec",
-    "dep:spl-token-2022",
+    # "dep:spl-token-2022",
     "dep:thiserror",
     "dep:tonic",
 ]

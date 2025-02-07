@@ -59,8 +59,6 @@ solana-logger = { git = "https://github.com/helius-labs/agave", branch = "master
 solana-sdk = { git = "https://github.com/helius-labs/agave", branch = "master-2.2-latest" }
 solana-storage-proto = { git = "https://github.com/helius-labs/agave", branch = "master-2.2-latest" }
 solana-transaction-status = { git = "https://github.com/helius-labs/agave", branch = "master-2.2-latest" }
-
-spl-token-2022 = "7.0.0"
 smallvec = "1.13.2"
 thiserror = "1.0.63"
 tokio = "1.21.2"
@@ -82,4 +80,10 @@ lto = true
 codegen-units = 1
 
 [patch.crates-io]
+solana-pubkey = { git = "https://github.com/helius-labs/agave", branch = "master-2.2-latest" }
 solana-program = { git = "https://github.com/helius-labs/agave", branch = "master-2.2-latest" }
+solana-instruction = { git = "https://github.com/helius-labs/agave", branch = "master-2.2-latest" }
+solana-account-info = { git = "https://github.com/helius-labs/agave", branch = "master-2.2-latest" }
+solana-msg = { git = "https://github.com/helius-labs/agave", branch = "master-2.2-latest" }
+solana-program-entrypoint = { git = "https://github.com/helius-labs/agave", branch = "master-2.2-latest" }
+solana-program-error = { git = "https://github.com/helius-labs/agave", branch = "master-2.2-latest" }

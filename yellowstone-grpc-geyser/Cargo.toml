@@ -17,7 +17,7 @@ crate-type = ["cdylib", "rlib"]
 name = "config-check"
 
 [dependencies]
-affinity = { workspace = true, optional = true }
+affinity = { workspace = true }
 agave-geyser-plugin-interface = { workspace = true }
 anyhow = { workspace = true }
 base64 = { workspace = true }
@@ -41,7 +41,7 @@ serde_json = { workspace = true }
 solana-logger = { workspace = true }
 solana-sdk = { workspace = true }
 solana-transaction-status = { workspace = true }
-spl-token-2022 = { workspace = true, features = ["no-entrypoint"] }
+# spl-token-2022 = { workspace = true, features = ["no-entrypoint"] }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "fs"] }
 tokio-stream = { workspace = true }
@@ -57,7 +57,3 @@ vergen = { workspace = true, features = ["build", "rustc"] }
 
 [lints]
 workspace = true
-
-[features]
-default = []
-linux-only = ["affinity"]  # Only enable affinity on Linux
