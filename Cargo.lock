@@ -5135,14 +5135,14 @@ dependencies = [
  "num-traits",
  "serde",
  "serde_derive",
- "solana-clock 2.1.13",
- "solana-cpi 2.1.13",
- "solana-decode-error 2.1.13",
- "solana-instruction 2.1.13",
- "solana-program-error 2.1.13",
- "solana-pubkey 2.1.13",
+ "solana-clock 2.2.0",
+ "solana-cpi 2.2.0",
+ "solana-decode-error 2.2.0",
+ "solana-instruction 2.2.0",
+ "solana-program-error 2.2.0",
+ "solana-pubkey 2.2.0",
  "solana-system-interface",
- "solana-sysvar-id 2.1.13",
+ "solana-sysvar-id 2.2.0",
 ]
 
 [[package]]
@@ -5179,9 +5179,9 @@ dependencies = [
  "num-traits",
  "serde",
  "serde_derive",
- "solana-decode-error 2.1.13",
- "solana-instruction 2.1.13",
- "solana-pubkey 2.1.13",
+ "solana-decode-error 2.2.0",
+ "solana-instruction 2.2.0",
+ "solana-pubkey 2.2.0",
  "wasm-bindgen",
 ]
 
@@ -5479,7 +5479,7 @@ dependencies = [
  "borsh 1.5.5",
  "num-derive",
  "num-traits",
- "solana-program 2.1.13",
+ "solana-program 2.2.0",
  "spl-associated-token-account-client",
  "spl-token",
  "spl-token-2022 6.0.0",
@@ -5492,8 +5492,8 @@ version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6f8349dbcbe575f354f9a533a21f272f3eb3808a49e2fdc1c34393b88ba76cb"
 dependencies = [
- "solana-instruction 2.1.13",
- "solana-pubkey 2.1.13",
+ "solana-instruction 2.2.0",
+ "solana-pubkey 2.2.0",
 ]
 
 [[package]]
@@ -5503,8 +5503,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a7398da23554a31660f17718164e31d31900956054f54f52d5ec1be51cb4f4b3"
 dependencies = [
  "bytemuck",
- "solana-program-error 2.1.13",
- "solana-sha256-hasher 2.1.13",
+ "solana-program-error 2.2.0",
+ "solana-sha256-hasher 2.2.0",
  "spl-discriminator-derive",
 ]
 
@@ -5539,7 +5539,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ce0f668975d2b0536e8a8fd60e56a05c467f06021dae037f1d0cfed0de2e231d"
 dependencies = [
  "bytemuck",
- "solana-program 2.1.13",
+ "solana-program 2.2.0",
  "solana-zk-sdk",
  "spl-pod",
  "spl-token-confidential-transfer-proof-extraction",
@@ -5551,12 +5551,12 @@ version = "6.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9f09647c0974e33366efeb83b8e2daebb329f0420149e74d3a4bd2c08cf9f7cb"
 dependencies = [
- "solana-account-info 2.1.13",
- "solana-instruction 2.1.13",
- "solana-msg 2.1.13",
- "solana-program-entrypoint 2.1.13",
- "solana-program-error 2.1.13",
- "solana-pubkey 2.1.13",
+ "solana-account-info 2.2.0",
+ "solana-instruction 2.2.0",
+ "solana-msg 2.2.0",
+ "solana-program-entrypoint 2.2.0",
+ "solana-program-error 2.2.0",
+ "solana-pubkey 2.2.0",
 ]
 
 [[package]]
@@ -5570,11 +5570,11 @@ dependencies = [
  "bytemuck_derive",
  "num-derive",
  "num-traits",
- "solana-decode-error 2.1.13",
- "solana-msg 2.1.13",
- "solana-program-error 2.1.13",
- "solana-program-option 2.1.13",
- "solana-pubkey 2.1.13",
+ "solana-decode-error 2.2.0",
+ "solana-msg 2.2.0",
+ "solana-program-error 2.2.0",
+ "solana-program-option 2.2.0",
+ "solana-pubkey 2.2.0",
  "solana-zk-sdk",
  "thiserror 1.0.69",
 ]
@@ -5587,7 +5587,7 @@ checksum = "9d39b5186f42b2b50168029d81e58e800b690877ef0b30580d107659250da1d1"
 dependencies = [
  "num-derive",
  "num-traits",
- "solana-program 2.1.13",
+ "solana-program 2.2.0",
  "spl-program-error-derive",
  "thiserror 1.0.69",
 ]
@@ -5613,12 +5613,12 @@ dependencies = [
  "bytemuck",
  "num-derive",
  "num-traits",
- "solana-account-info 2.1.13",
- "solana-decode-error 2.1.13",
- "solana-instruction 2.1.13",
- "solana-msg 2.1.13",
- "solana-program-error 2.1.13",
- "solana-pubkey 2.1.13",
+ "solana-account-info 2.2.0",
+ "solana-decode-error 2.2.0",
+ "solana-instruction 2.2.0",
+ "solana-msg 2.2.0",
+ "solana-program-error 2.2.0",
+ "solana-pubkey 2.2.0",
  "spl-discriminator",
  "spl-pod",
  "spl-program-error",
@@ -5637,7 +5637,7 @@ dependencies = [
  "num-derive",
  "num-traits",
  "num_enum",
- "solana-program 2.1.13",
+ "solana-program 2.2.0",
  "thiserror 1.0.69",
 ]
 
@@ -5652,7 +5652,7 @@ dependencies = [
  "num-derive",
  "num-traits",
  "num_enum",
- "solana-program 2.1.13",
+ "solana-program 2.2.0",
  "solana-security-txt",
  "solana-zk-sdk",
  "spl-elgamal-registry",
@@ -5680,7 +5680,7 @@ dependencies = [
  "num-derive",
  "num-traits",
  "num_enum",
- "solana-program 2.1.13",
+ "solana-program 2.2.0",
  "solana-security-txt",
  "solana-zk-sdk",
  "spl-elgamal-registry",
@@ -5717,7 +5717,7 @@ checksum = "eff2d6a445a147c9d6dd77b8301b1e116c8299601794b558eafa409b342faf96"
 dependencies = [
  "bytemuck",
  "solana-curve25519",
- "solana-program 2.1.13",
+ "solana-program 2.2.0",
  "solana-zk-sdk",
  "spl-pod",
  "thiserror 2.0.11",
@@ -5754,11 +5754,11 @@ dependencies = [
  "bytemuck",
  "num-derive",
  "num-traits",
- "solana-decode-error 2.1.13",
- "solana-instruction 2.1.13",
- "solana-msg 2.1.13",
- "solana-program-error 2.1.13",
- "solana-pubkey 2.1.13",
+ "solana-decode-error 2.2.0",
+ "solana-instruction 2.2.0",
+ "solana-msg 2.2.0",
+ "solana-program-error 2.2.0",
+ "solana-pubkey 2.2.0",
  "spl-discriminator",
  "spl-pod",
  "thiserror 1.0.69",
@@ -5774,11 +5774,11 @@ dependencies = [
  "num-derive",
  "num-traits",
  "solana-borsh 2.1.13",
- "solana-decode-error 2.1.13",
- "solana-instruction 2.1.13",
- "solana-msg 2.1.13",
- "solana-program-error 2.1.13",
- "solana-pubkey 2.1.13",
+ "solana-decode-error 2.2.0",
+ "solana-instruction 2.2.0",
+ "solana-msg 2.2.0",
+ "solana-program-error 2.2.0",
+ "solana-pubkey 2.2.0",
  "spl-discriminator",
  "spl-pod",
  "spl-type-length-value",
@@ -5795,13 +5795,13 @@ dependencies = [
  "bytemuck",
  "num-derive",
  "num-traits",
- "solana-account-info 2.1.13",
- "solana-cpi 2.1.13",
- "solana-decode-error 2.1.13",
- "solana-instruction 2.1.13",
- "solana-msg 2.1.13",
- "solana-program-error 2.1.13",
- "solana-pubkey 2.1.13",
+ "solana-account-info 2.2.0",
+ "solana-cpi 2.2.0",
+ "solana-decode-error 2.2.0",
+ "solana-instruction 2.2.0",
+ "solana-msg 2.2.0",
+ "solana-program-error 2.2.0",
+ "solana-pubkey 2.2.0",
  "spl-discriminator",
  "spl-pod",
  "spl-program-error",
@@ -5819,10 +5819,10 @@ dependencies = [
  "bytemuck",
  "num-derive",
  "num-traits",
- "solana-account-info 2.1.13",
- "solana-decode-error 2.1.13",
- "solana-msg 2.1.13",
- "solana-program-error 2.1.13",
+ "solana-account-info 2.2.0",
+ "solana-decode-error 2.2.0",
+ "solana-msg 2.2.0",
+ "solana-program-error 2.2.0",
  "spl-discriminator",
  "spl-pod",
  "thiserror 1.0.69",
@@ -6892,8 +6892,3 @@ dependencies = [
  "cc",
  "pkg-config",
 ]
-
-[[patch.unused]]
-name = "solana-zk-sdk"
-version = "2.2.0"
-source = "git+https://github.com/helius-labs/agave?branch=master-2.2-latest-4#529dc03d5f21ef190cd94330afa573b926a28a73"
