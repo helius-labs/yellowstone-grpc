@@ -59,6 +59,7 @@ solana-logger = { git = "https://github.com/helius-labs/agave", branch = "master
 solana-sdk = { git = "https://github.com/helius-labs/agave", branch = "master-2.2-latest-4" }
 solana-storage-proto = { git = "https://github.com/helius-labs/agave", branch = "master-2.2-latest-4" }
 solana-transaction-status = { git = "https://github.com/helius-labs/agave", branch = "master-2.2-latest-4" }
+spl-token-2022 = "7.0.0"
 smallvec = "1.13.2"
 thiserror = "1.0.63"
 tokio = "1.21.2"
@@ -112,3 +113,4 @@ solana-slot-history = { git = "https://github.com/helius-labs/agave", branch = "
 solana-stable-layout = { git = "https://github.com/helius-labs/agave", branch = "master-2.2-latest-4" }
 solana-sysvar-id = { git = "https://github.com/helius-labs/agave", branch = "master-2.2-latest-4" }
 solana-transaction-error = { git = "https://github.com/helius-labs/agave", branch = "master-2.2-latest-4" }
+solana-zk-sdk = { git = "https://github.com/helius-labs/agave", branch = "master-2.2-latest-4" }

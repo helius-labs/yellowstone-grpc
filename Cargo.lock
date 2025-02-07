@@ -6722,6 +6722,7 @@ dependencies = [
  "solana-logger",
  "solana-sdk 2.2.0",
  "solana-transaction-status",
+ "spl-token-2022 7.0.0",
  "thiserror 1.0.69",
  "tokio",
  "tokio-stream",
@@ -6892,3 +6893,8 @@ dependencies = [
  "cc",
  "pkg-config",
 ]
+
+[[patch.unused]]
+name = "solana-zk-sdk"
+version = "2.2.0"
+source = "git+https://github.com/helius-labs/agave?branch=master-2.2-latest-4#529dc03d5f21ef190cd94330afa573b926a28a73"

@@ -60,7 +60,7 @@ plugin = [
     "dep:bytes",
     "dep:serde",
     "dep:smallvec",
-    # "dep:spl-token-2022",
+    "dep:spl-token-2022",
     "dep:thiserror",
     "dep:tonic",
 ]
