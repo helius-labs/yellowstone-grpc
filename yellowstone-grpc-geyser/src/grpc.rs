@@ -269,7 +269,6 @@ struct SlotMessages {
     messages_slots: Vec<(u64, Message)>,
     block_meta: Option<Arc<MessageBlockMeta>>,
     transactions: Vec<Arc<MessageTransactionInfo>>,
-    accounts_dedup: HashMap<Pubkey, (u64, usize)>, // (write_version, message_index)
     entries: Vec<Arc<MessageEntry>>,
     sealed: bool,
     entries_count: usize,
@@ -643,19 +642,8 @@ impl GrpcService {
                             slot_messages.transactions.push(Arc::clone(&msg.transaction));
                             sealed_block_msg = slot_messages.try_seal(&mut msgid_gen);
                         }
-                        // Dedup accounts by max write_version
-                        Message::Account(msg) => {
-                            let write_version = msg.account.write_version;
-                            let msg_index = slot_messages.messages.len() - 1;
-                            if let Some(entry) = slot_messages.accounts_dedup.get_mut(&msg.account.pubkey) {
-                                if entry.0 < write_version {
-                                    // We can replace the message, but in this case we will lose the order
-                                    slot_messages.messages[entry.1] = None;
-                                    *entry = (write_version, msg_index);
-                                }
-                            } else {
-                                slot_messages.accounts_dedup.insert(msg.account.pubkey, (write_version, msg_index));
-                            }
+                        Message::Account(_msg) => {
+                            // No special handling needed anymore - accounts will be processed in order received
                         }
                         Message::Entry(msg) => {
                             slot_messages.entries.push(Arc::clone(msg));
