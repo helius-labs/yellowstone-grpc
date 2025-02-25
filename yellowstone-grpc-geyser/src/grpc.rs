@@ -809,13 +809,13 @@ impl GrpcService {
                     let mut replayed_messages = Vec::with_capacity(32_768);
                     for (slot, messages) in messages.iter() {
                         if *slot >= replay_slot {
-                            replayed_messages.extend_from_slice(&messages.messages_slots);
                             if commitment == CommitmentLevel::Processed
                                 || (commitment == CommitmentLevel::Finalized && messages.finalized)
                                 || (commitment == CommitmentLevel::Confirmed && messages.confirmed)
                             {
                                 replayed_messages.extend(messages.messages.iter().filter_map(|v| v.clone()));
                             }
+                            replayed_messages.extend_from_slice(&messages.messages_slots);
                         }
                     }
                     let _ = tx.send(ReplayedResponse::Messages(replayed_messages));
