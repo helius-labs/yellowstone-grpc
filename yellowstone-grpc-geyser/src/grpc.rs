@@ -9,7 +9,6 @@ use {
     prost_types::Timestamp,
     solana_sdk::{
         clock::{Slot, MAX_RECENT_BLOCKHASHES},
-        pubkey::Pubkey,
     },
     std::{
         collections::{BTreeMap, HashMap},
