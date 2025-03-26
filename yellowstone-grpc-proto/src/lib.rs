@@ -54,8 +54,8 @@ pub mod convert_to {
             pubkey::Pubkey,
             signature::Signature,
             transaction::{SanitizedTransaction, TransactionError},
-            transaction_context::TransactionReturnData,
         },
+        solana_transaction_context::TransactionReturnData,
         solana_transaction_status::{
             InnerInstruction, InnerInstructions, Reward, RewardType, TransactionStatusMeta,
             TransactionTokenBalance,
@@ -313,8 +313,8 @@ pub mod convert_from {
             pubkey::Pubkey,
             signature::Signature,
             transaction::{TransactionError, VersionedTransaction},
-            transaction_context::TransactionReturnData,
         },
+        solana_transaction_context::TransactionReturnData,
         solana_transaction_status::{
             ConfirmedBlock, InnerInstruction, InnerInstructions, Reward, RewardType,
             RewardsAndNumPartitions, TransactionStatusMeta, TransactionTokenBalance,
