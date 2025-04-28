@@ -55,5 +55,10 @@ cargo-lock = { workspace = true }
 git-version = { workspace = true }
 vergen = { workspace = true, features = ["build", "rustc"] }
 
+[profile.release]
+debug = 2
+split-debuginfo = "unpacked"
+lto = "thin"
+
 [lints]
 workspace = true
