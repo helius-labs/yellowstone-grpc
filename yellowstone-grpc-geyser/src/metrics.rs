@@ -207,6 +207,7 @@ impl PrometheusService {
             register!(CONNECTIONS_TOTAL);
             register!(SUBSCRIPTIONS_TOTAL);
             register!(MISSED_STATUS_MESSAGE);
+            register!(MESSAGE_SEND_LATENCY);
 
             VERSION
                 .with_label_values(&[
