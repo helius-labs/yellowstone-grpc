@@ -45,6 +45,21 @@ lazy_static::lazy_static! {
         &["status"]
     ).unwrap();
 
+    static ref LATEST_SLOT_GEYSER: IntGaugeVec = IntGaugeVec::new(
+        Opts::new("latest_slot_geyser", "Latest slot received directly from Geyser interface for specific message types"),
+        &["message_type"]
+    ).unwrap();
+
+    static ref LATEST_SLOT_PLUGIN: IntGaugeVec = IntGaugeVec::new(
+        Opts::new("latest_slot_plugin", "Latest slot processed by the main plugin loop for specific message types"),
+        &["message_type"]
+    ).unwrap();
+
+    static ref LATEST_SLOT_BROADCASTED: IntGaugeVec = IntGaugeVec::new(
+        Opts::new("latest_slot_broadcasted", "Latest slot received by a client loop from the broadcast channel for specific message types, commitment, and client"),
+        &["message_type", "commitment", "client_id"]
+    ).unwrap();
+
     static ref INVALID_FULL_BLOCKS: IntGaugeVec = IntGaugeVec::new(
         Opts::new("invalid_full_blocks_total", "Total number of fails on constructin full blocks"),
         &["reason"]
@@ -66,6 +81,10 @@ lazy_static::lazy_static! {
     static ref MISSED_STATUS_MESSAGE: IntCounterVec = IntCounterVec::new(
         Opts::new("missed_status_message_total", "Number of missed messages by commitment"),
         &["status"]
+    ).unwrap();
+
+    static ref BROADCAST_CHANNEL_LEN: IntGauge = IntGauge::new(
+        "broadcast_channel_len", "Number of messages currently stored in the broadcast channel buffer"
     ).unwrap();
 }
 
@@ -194,11 +213,15 @@ impl PrometheusService {
             register!(VERSION);
             register!(SLOT_STATUS);
             register!(SLOT_STATUS_PLUGIN);
+            register!(LATEST_SLOT_GEYSER);
+            register!(LATEST_SLOT_PLUGIN);
+            register!(LATEST_SLOT_BROADCASTED);
             register!(INVALID_FULL_BLOCKS);
             register!(MESSAGE_QUEUE_SIZE);
             register!(CONNECTIONS_TOTAL);
             register!(SUBSCRIPTIONS_TOTAL);
             register!(MISSED_STATUS_MESSAGE);
+            register!(BROADCAST_CHANNEL_LEN);
 
             VERSION
                 .with_label_values(&[
@@ -326,6 +349,29 @@ pub fn update_slot_plugin_status(status: CommitmentLevel, slot: u64) {
         .set(slot as i64);
 }
 
+pub fn update_latest_slot_geyser(message_type: &str, slot: u64) {
+    LATEST_SLOT_GEYSER
+        .with_label_values(&[message_type])
+        .set(slot as i64);
+}
+
+pub fn update_latest_slot_plugin(message_type: &str, slot: u64) {
+    LATEST_SLOT_PLUGIN
+        .with_label_values(&[message_type])
+        .set(slot as i64);
+}
+
+pub fn update_latest_slot_broadcasted(
+    message_type: &str,
+    commitment: CommitmentLevel,
+    client_id: usize,
+    slot: u64,
+) {
+    LATEST_SLOT_BROADCASTED
+        .with_label_values(&[message_type, commitment.as_str(), &client_id.to_string()])
+        .set(slot as i64);
+}
+
 pub fn update_invalid_blocks(reason: impl AsRef<str>) {
     INVALID_FULL_BLOCKS
         .with_label_values(&[reason.as_ref()])
@@ -369,4 +415,8 @@ pub fn missed_status_message_inc(status: CommitmentLevel) {
     MISSED_STATUS_MESSAGE
         .with_label_values(&[status.as_str()])
         .inc()
+}
+
+pub fn set_broadcast_channel_len(len: usize) {
+    BROADCAST_CHANNEL_LEN.set(len as i64);
 }

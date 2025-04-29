@@ -2,7 +2,7 @@ use {
     crate::{
         config::Config,
         grpc::GrpcService,
-        metrics::{self, PrometheusService},
+        metrics::{self, message_queue_size_inc, PrometheusService},
     },
     agave_geyser_plugin_interface::geyser_plugin_interface::{
         GeyserPlugin, GeyserPluginError, ReplicaAccountInfoVersions, ReplicaBlockInfoVersions,
@@ -149,6 +149,8 @@ impl GeyserPlugin for Plugin {
                 ReplicaAccountInfoVersions::V0_0_3(info) => info,
             };
 
+            metrics::update_latest_slot_geyser("account", slot);
+
             if is_startup {
                 if let Some(channel) = inner.snapshot_channel.lock().unwrap().as_ref() {
                     let message =
@@ -208,6 +210,8 @@ impl GeyserPlugin for Plugin {
                 ReplicaTransactionInfoVersions::V0_0_2(info) => info,
             };
 
+            metrics::update_latest_slot_geyser("transaction", slot);
+
             let message = Message::Transaction(MessageTransaction::from_geyser(transaction, slot));
             inner.send_message(message);
 
@@ -246,6 +250,9 @@ impl GeyserPlugin for Plugin {
                 }
                 ReplicaBlockInfoVersions::V0_0_4(info) => info,
             };
+
+            let slot = blockinfo.slot;
+            metrics::update_latest_slot_geyser("blockmeta", slot);
 
             let message = Message::BlockMeta(Arc::new(MessageBlockMeta::from_geyser(blockinfo)));
             inner.send_message(message);

@@ -1,7 +1,10 @@
 use {
     crate::{
         config::{ConfigGrpc, ConfigTokio},
-        metrics::{self, DebugClientMessage},
+        metrics::{
+            self, connections_total_dec, connections_total_inc, message_queue_size_dec,
+            update_slot_plugin_status, DebugClientMessage,
+        },
         version::GrpcVersionInfo,
     },
     anyhow::Context,
@@ -526,12 +529,23 @@ impl GrpcService {
         let mut replay_stored_slots_rx = replay_stored_slots_rx.unwrap_or(rx);
 
         loop {
+            metrics::set_broadcast_channel_len(broadcast_tx.len());
+
             tokio::select! {
                 Some(message) = messages_rx.recv() => {
                     metrics::message_queue_size_dec();
                     let msgid = msgid_gen.next();
 
                     // Update metrics
+                    let message_slot = message.get_slot();
+                    match message {
+                        Message::Account(_) => metrics::update_latest_slot_plugin("account", message_slot),
+                        Message::Transaction(_) => metrics::update_latest_slot_plugin("transaction", message_slot),
+                        Message::BlockMeta(_) => metrics::update_latest_slot_plugin("blockmeta", message_slot),
+                        _ => {}
+                    }
+
+                    // Update metrics for slot status
                     if let Message::Slot(slot_message) = &message {
                         metrics::update_slot_plugin_status(slot_message.status, slot_message.slot);
                     }
@@ -970,6 +984,32 @@ impl GrpcService {
                                 break 'outer;
                             }
                         };
+
+                        // Iterate over messages received in this batch from broadcast
+                        for (_msgid, message) in messages.iter() {
+                             let message_slot = message.get_slot();
+                             match message {
+                                 Message::Account(_) => metrics::update_latest_slot_broadcasted(
+                                     "account",
+                                     commitment,
+                                     id,
+                                     message_slot
+                                 ),
+                                 Message::Transaction(_) => metrics::update_latest_slot_broadcasted(
+                                     "transaction",
+                                     commitment,
+                                     id,
+                                     message_slot
+                                 ),
+                                 Message::BlockMeta(_) => metrics::update_latest_slot_broadcasted(
+                                     "blockmeta",
+                                     commitment,
+                                     id,
+                                     message_slot
+                                 ),
+                                 _ => {} // Ignore others for this metric
+                             }
+                        }
 
                         if commitment == filter.get_commitment_level() {
                             for (_msgid, message) in messages.iter() {
