@@ -63,3 +63,8 @@ workspace = true
 [features]
 default = ["statsd"]
 statsd = []
+
+[profile.release]
+split-debuginfo = "unpacked"
+lto = "thin"
+debug = 2
