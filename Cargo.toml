@@ -5,9 +5,6 @@ members = [
     "yellowstone-grpc-geyser", # 4.2.2+solana.2.1.9
     "yellowstone-grpc-proto",  # 4.1.1+solana.2.1.9
 ]
-exclude = [
-    "yellowstone-grpc-client-nodejs/solana-encoding-wasm", # 3.0.0
-]
 
 [workspace.package]
 authors = ["Triton One"]
@@ -19,8 +16,8 @@ keywords = ["solana"]
 publish = false
 
 [workspace.dependencies]
-affinity = "0.1.2"
 agave-geyser-plugin-interface = { git = "https://github.com/helius-labs/agave", branch = "master-2.3" }
+affinity-linux = "1.0.1"
 anyhow = "1.0.62"
 backoff = "0.4.0"
 base64 = "0.22.1"
@@ -69,8 +66,10 @@ tonic = "0.12.1"
 tonic-build = "0.12.1"
 tonic-health = "0.12.1"
 vergen = "9.0.0"
-yellowstone-grpc-client = { path = "yellowstone-grpc-client", version = "2.3.0" }
-yellowstone-grpc-proto = { path = "yellowstone-grpc-proto", version = "2.3.0", default-features = false }
+metrics = "0.24.2"
+metrics-exporter-statsd = "0.9.0"
+yellowstone-grpc-client = { path = "yellowstone-grpc-client", version = "6.0.0" }
+yellowstone-grpc-proto = { path = "yellowstone-grpc-proto", version = "6.0.0", default-features = false }
 
 [workspace.lints.clippy]
 clone_on_ref_ptr = "deny"

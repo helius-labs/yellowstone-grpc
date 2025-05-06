@@ -26,7 +26,7 @@ use {
             },
             message::{
                 CommitmentLevel, Message, MessageAccount, MessageBlock, MessageBlockMeta,
-                MessageEntry, MessageSlot, MessageTransaction,
+                MessageEntry, MessageSlot, MessageTransaction, SlotStatus,
             },
         },
     },
@@ -170,9 +170,19 @@ impl Filter {
 
     fn decode_commitment(commitment: Option<i32>) -> FilterResult<CommitmentLevel> {
         let commitment = commitment.unwrap_or(CommitmentLevelProto::Processed as i32);
-        CommitmentLevelProto::try_from(commitment)
+        let commitment = CommitmentLevelProto::try_from(commitment)
             .map(Into::into)
-            .map_err(|_error| FilterError::InvalidCommitment { commitment })
+            .map_err(|_error| FilterError::InvalidCommitment { commitment })?;
+        if !matches!(
+            commitment,
+            CommitmentLevel::Processed | CommitmentLevel::Confirmed | CommitmentLevel::Finalized
+        ) {
+            Err(FilterError::InvalidCommitment {
+                commitment: commitment as i32,
+            })
+        } else {
+            Ok(commitment)
+        }
     }
 
     fn decode_pubkeys<'a>(
@@ -581,12 +591,14 @@ impl<'a> FilterAccountsMatch<'a> {
 #[derive(Debug, Default, Clone, Copy)]
 struct FilterSlotsInner {
     filter_by_commitment: bool,
+    interslot_updates: bool,
 }
 
 impl FilterSlotsInner {
     fn new(filter: SubscribeRequestFilterSlots) -> Self {
         Self {
             filter_by_commitment: filter.filter_by_commitment.unwrap_or_default(),
+            interslot_updates: filter.interslot_updates.unwrap_or_default(),
         }
     }
 }
@@ -625,7 +637,16 @@ impl FilterSlots {
             .filters
             .iter()
             .filter_map(|(name, inner)| {
-                if !inner.filter_by_commitment || commitment == Some(message.status) {
+                if (!inner.filter_by_commitment
+                    || commitment
+                        .map(|commitment| commitment == message.status)
+                        .unwrap_or(false))
+                    && (inner.interslot_updates
+                        || matches!(
+                            message.status,
+                            SlotStatus::Processed | SlotStatus::Confirmed | SlotStatus::Finalized
+                        ))
+                {
                     Some(name.clone())
                 } else {
                     None

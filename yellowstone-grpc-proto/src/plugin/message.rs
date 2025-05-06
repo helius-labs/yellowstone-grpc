@@ -3,15 +3,15 @@ use {
         convert_to,
         geyser::{
             subscribe_update::UpdateOneof, CommitmentLevel as CommitmentLevelProto,
-            SubscribeUpdateAccount, SubscribeUpdateAccountInfo, SubscribeUpdateBlock,
-            SubscribeUpdateBlockMeta, SubscribeUpdateEntry, SubscribeUpdateSlot,
-            SubscribeUpdateTransaction, SubscribeUpdateTransactionInfo,
+            SlotStatus as SlotStatusProto, SubscribeUpdateAccount, SubscribeUpdateAccountInfo,
+            SubscribeUpdateBlock, SubscribeUpdateBlockMeta, SubscribeUpdateEntry,
+            SubscribeUpdateSlot, SubscribeUpdateTransaction, SubscribeUpdateTransactionInfo,
         },
         solana::storage::confirmed_block,
     },
     agave_geyser_plugin_interface::geyser_plugin_interface::{
         ReplicaAccountInfoV3, ReplicaBlockInfoV4, ReplicaEntryInfoV2, ReplicaTransactionInfoV2,
-        SlotStatus,
+        SlotStatus as GeyserSlotStatus,
     },
     prost_types::Timestamp,
     solana_sdk::{
@@ -35,24 +35,6 @@ pub enum CommitmentLevel {
     Processed,
     Confirmed,
     Finalized,
-    FirstShredReceived,
-    Completed,
-    CreatedBank,
-    Dead,
-}
-
-impl From<&SlotStatus> for CommitmentLevel {
-    fn from(status: &SlotStatus) -> Self {
-        match status {
-            SlotStatus::Processed => Self::Processed,
-            SlotStatus::Confirmed => Self::Confirmed,
-            SlotStatus::Rooted => Self::Finalized,
-            SlotStatus::FirstShredReceived => Self::FirstShredReceived,
-            SlotStatus::Completed => Self::Completed,
-            SlotStatus::CreatedBank => Self::CreatedBank,
-            SlotStatus::Dead(_error) => Self::Dead,
-        }
-    }
 }
 
 impl From<CommitmentLevel> for CommitmentLevelProto {
@@ -61,10 +43,6 @@ impl From<CommitmentLevel> for CommitmentLevelProto {
             CommitmentLevel::Processed => Self::Processed,
             CommitmentLevel::Confirmed => Self::Confirmed,
             CommitmentLevel::Finalized => Self::Finalized,
-            CommitmentLevel::FirstShredReceived => Self::FirstShredReceived,
-            CommitmentLevel::Completed => Self::Completed,
-            CommitmentLevel::CreatedBank => Self::CreatedBank,
-            CommitmentLevel::Dead => Self::Dead,
         }
     }
 }
@@ -75,15 +53,85 @@ impl From<CommitmentLevelProto> for CommitmentLevel {
             CommitmentLevelProto::Processed => Self::Processed,
             CommitmentLevelProto::Confirmed => Self::Confirmed,
             CommitmentLevelProto::Finalized => Self::Finalized,
-            CommitmentLevelProto::FirstShredReceived => Self::FirstShredReceived,
-            CommitmentLevelProto::Completed => Self::Completed,
-            CommitmentLevelProto::CreatedBank => Self::CreatedBank,
-            CommitmentLevelProto::Dead => Self::Dead,
         }
     }
 }
 
 impl CommitmentLevel {
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            Self::Processed => "processed",
+            Self::Confirmed => "confirmed",
+            Self::Finalized => "finalized",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum SlotStatus {
+    Processed,
+    Confirmed,
+    Finalized,
+    FirstShredReceived,
+    Completed,
+    CreatedBank,
+    Dead,
+}
+
+impl From<&GeyserSlotStatus> for SlotStatus {
+    fn from(status: &GeyserSlotStatus) -> Self {
+        match status {
+            GeyserSlotStatus::Processed => Self::Processed,
+            GeyserSlotStatus::Confirmed => Self::Confirmed,
+            GeyserSlotStatus::Rooted => Self::Finalized,
+            GeyserSlotStatus::FirstShredReceived => Self::FirstShredReceived,
+            GeyserSlotStatus::Completed => Self::Completed,
+            GeyserSlotStatus::CreatedBank => Self::CreatedBank,
+            GeyserSlotStatus::Dead(_error) => Self::Dead,
+        }
+    }
+}
+
+impl From<SlotStatusProto> for SlotStatus {
+    fn from(status: SlotStatusProto) -> Self {
+        match status {
+            SlotStatusProto::SlotProcessed => Self::Processed,
+            SlotStatusProto::SlotConfirmed => Self::Confirmed,
+            SlotStatusProto::SlotFinalized => Self::Finalized,
+            SlotStatusProto::SlotFirstShredReceived => Self::FirstShredReceived,
+            SlotStatusProto::SlotCompleted => Self::Completed,
+            SlotStatusProto::SlotCreatedBank => Self::CreatedBank,
+            SlotStatusProto::SlotDead => Self::Dead,
+        }
+    }
+}
+
+impl From<SlotStatus> for SlotStatusProto {
+    fn from(status: SlotStatus) -> Self {
+        match status {
+            SlotStatus::Processed => Self::SlotProcessed,
+            SlotStatus::Confirmed => Self::SlotConfirmed,
+            SlotStatus::Finalized => Self::SlotFinalized,
+            SlotStatus::FirstShredReceived => Self::SlotFirstShredReceived,
+            SlotStatus::Completed => Self::SlotCompleted,
+            SlotStatus::CreatedBank => Self::SlotCreatedBank,
+            SlotStatus::Dead => Self::SlotDead,
+        }
+    }
+}
+
+impl PartialEq<SlotStatus> for CommitmentLevel {
+    fn eq(&self, other: &SlotStatus) -> bool {
+        match self {
+            Self::Processed if *other == SlotStatus::Processed => true,
+            Self::Confirmed if *other == SlotStatus::Confirmed => true,
+            Self::Finalized if *other == SlotStatus::Finalized => true,
+            _ => false,
+        }
+    }
+}
+
+impl SlotStatus {
     pub const fn as_str(&self) -> &'static str {
         match self {
             Self::Processed => "processed",
@@ -101,18 +149,18 @@ impl CommitmentLevel {
 pub struct MessageSlot {
     pub slot: Slot,
     pub parent: Option<Slot>,
-    pub status: CommitmentLevel,
+    pub status: SlotStatus,
     pub dead_error: Option<String>,
     pub created_at: Timestamp,
 }
 
 impl MessageSlot {
-    pub fn from_geyser(slot: Slot, parent: Option<Slot>, status: &SlotStatus) -> Self {
+    pub fn from_geyser(slot: Slot, parent: Option<Slot>, status: &GeyserSlotStatus) -> Self {
         Self {
             slot,
             parent,
             status: status.into(),
-            dead_error: if let SlotStatus::Dead(error) = status {
+            dead_error: if let GeyserSlotStatus::Dead(error) = status {
                 Some(error.clone())
             } else {
                 None
@@ -128,8 +176,8 @@ impl MessageSlot {
         Ok(Self {
             slot: msg.slot,
             parent: msg.parent,
-            status: CommitmentLevelProto::try_from(msg.status)
-                .map_err(|_| "failed to parse commitment level")?
+            status: SlotStatusProto::try_from(msg.status)
+                .map_err(|_| "failed to parse slot status")?
                 .into(),
             dead_error: msg.dead_error.clone(),
             created_at,
@@ -339,7 +387,7 @@ impl MessageEntry {
             slot: info.slot,
             index: info.index,
             num_hashes: info.num_hashes,
-            hash: Hash::new(info.hash),
+            hash: Hash::new_from_array(<[u8; HASH_BYTES]>::try_from(info.hash).unwrap()),
             executed_transaction_count: info.executed_transaction_count,
             starting_transaction_index: info
                 .starting_transaction_index
@@ -536,5 +584,33 @@ impl Message {
                 Self::Entry(Arc::new(MessageEntry::from_update_oneof(&msg, created_at)?))
             }
         })
+    }
+
+    pub fn created_at(&self) -> Timestamp {
+        match self {
+            Self::Slot(msg) => msg.created_at,
+            Self::Account(msg) => msg.created_at,
+            Self::Transaction(msg) => msg.created_at,
+            Self::Entry(msg) => msg.created_at,
+            Self::BlockMeta(msg) => msg.created_at,
+            Self::Block(msg) => msg.created_at,
+        }
+    }
+
+    pub fn time_since_created_ms(&self) -> f64 {
+        let current_time = Timestamp::from(SystemTime::now());
+        let created_at = self.created_at();
+        (current_time.nanos - created_at.nanos) as f64 / 1_000_000.0
+    }
+
+    pub fn type_name(&self) -> &'static str {
+        match self {
+            Self::Slot(_) => "slot",
+            Self::Account(_) => "account",
+            Self::Transaction(_) => "transaction",
+            Self::Entry(_) => "entry",
+            Self::BlockMeta(_) => "block_meta",
+            Self::Block(_) => "block",
+        }
     }
 }
