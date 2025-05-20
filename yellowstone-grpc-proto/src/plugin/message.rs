@@ -598,9 +598,7 @@ impl Message {
     }
 
     pub fn time_since_created_ms(&self) -> f64 {
-        let current_time = Timestamp::from(SystemTime::now());
-        let created_at = self.created_at();
-        (current_time.nanos - created_at.nanos) as f64 / 1_000_000.0
+        time_since_timestamp(self.created_at())
     }
 
     pub fn type_name(&self) -> &'static str {
@@ -613,4 +611,10 @@ impl Message {
             Self::Block(_) => "block",
         }
     }
+}
+
+
+pub fn time_since_timestamp(timestamp: Timestamp) -> f64 {
+    let current_time = Timestamp::from(SystemTime::now());
+    ((current_time.seconds - timestamp.seconds) as f64 * 1000.0) + ((current_time.nanos - timestamp.nanos) as f64 / 1_000_000.0)
 }

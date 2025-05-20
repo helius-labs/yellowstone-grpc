@@ -379,7 +379,22 @@ impl FilteredUpdateOneof {
     pub const fn entry(message: Arc<MessageEntry>) -> Self {
         Self::Entry(FilteredUpdateEntry(message))
     }
+
+    pub fn type_name(&self) -> &'static str {
+        match self {
+            FilteredUpdateOneof::Account(_) => "account",
+            FilteredUpdateOneof::Slot(_) => "slot",
+            FilteredUpdateOneof::Transaction(_) => "transaction",
+            FilteredUpdateOneof::TransactionStatus(_) => "transaction_status",
+            FilteredUpdateOneof::Block(_) => "block",
+            FilteredUpdateOneof::Ping => "ping",
+            FilteredUpdateOneof::Pong(_) => "pong",
+            FilteredUpdateOneof::BlockMeta(_) => "block_meta",
+            FilteredUpdateOneof::Entry(_) => "entry",
+        }
+    }
 }
+
 
 impl prost::Message for FilteredUpdateOneof {
     fn encode_raw(&self, buf: &mut impl BufMut) {

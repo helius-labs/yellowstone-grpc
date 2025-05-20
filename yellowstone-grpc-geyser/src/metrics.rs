@@ -1,36 +1,26 @@
 use {
-    crate::{config::ConfigPrometheus, version::VERSION as VERSION_INFO},
-    agave_geyser_plugin_interface::geyser_plugin_interface::SlotStatus as GeyserSlosStatus,
-    http_body_util::{combinators::BoxBody, BodyExt, Empty as BodyEmpty, Full as BodyFull},
-    hyper::{
+    crate::{config::ConfigPrometheus, version::VERSION as VERSION_INFO}, agave_geyser_plugin_interface::geyser_plugin_interface::SlotStatus as GeyserSlosStatus, http_body_util::{combinators::BoxBody, BodyExt, Empty as BodyEmpty, Full as BodyFull}, hyper::{
         body::{Bytes, Incoming as BodyIncoming},
         service::service_fn,
         Request, Response, StatusCode,
-    },
-    hyper_util::{
+    }, hyper_util::{
         rt::tokio::{TokioExecutor, TokioIo},
         server::conn::auto::Builder as ServerBuilder,
-    },
-    log::{error, info},
-    prometheus::{
+    }, log::{error, info}, prometheus::{
         HistogramOpts, HistogramVec, IntCounterVec, IntGauge, IntGaugeVec, Opts, Registry,
         TextEncoder,
-    },
-    solana_sdk::clock::Slot,
-    std::{
+    }, prost_types::Timestamp, solana_sdk::clock::Slot, std::{
         collections::{hash_map::Entry as HashMapEntry, HashMap},
         convert::Infallible,
         sync::{
             atomic::{AtomicI64, AtomicUsize, Ordering},
             Arc, Once,
         },
-    },
-    tokio::{
+    }, tokio::{
         net::TcpListener,
         sync::{mpsc, oneshot, Notify},
         task::JoinHandle,
-    },
-    yellowstone_grpc_proto::plugin::{filter::Filter, message::SlotStatus},
+    }, yellowstone_grpc_proto::plugin::{filter::Filter, message::{time_since_timestamp, Message, SlotStatus}}
 };
 
 lazy_static::lazy_static! {
@@ -57,6 +47,12 @@ lazy_static::lazy_static! {
         Opts::new("missed_status_message_total", "Number of missed messages by commitment"),
         &["status"]
     ).unwrap();
+
+    static ref MESSAGE_RECEIVE_LATENCY: HistogramVec = HistogramVec::new(
+        HistogramOpts::new("message_receive_latency_ms", "Latency of message receive").buckets(vec![1.0, 5.0, 10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0, 200.0, 300.0, 400.0, 500.0, 1000.0, 2000.0, 3000.0, 4000.0, 5000.0]),
+        &["stage", "type"]
+    ).unwrap();
+
 }
 
 #[derive(Debug)]
@@ -182,6 +178,7 @@ impl PrometheusService {
                 };
             }
             register!(VERSION);
+            register!(MESSAGE_RECEIVE_LATENCY);
 
             VERSION
                 .with_label_values(&[
@@ -355,4 +352,18 @@ pub fn missed_status_message_inc(status: SlotStatus) {
     MISSED_STATUS_MESSAGE
         .with_label_values(&[status.as_str()])
         .inc()
+}
+
+
+
+
+pub fn record_message_latency(message: &Message, stage: &'static str) {
+    let created_at = message.created_at();
+    let message_type = message.type_name();
+    record_message_latency_helper(created_at, stage, message_type);
+}
+
+pub fn record_message_latency_helper(created_at: Timestamp, stage: &'static str, message_type: &'static str) {
+    let latency = time_since_timestamp(created_at);
+    MESSAGE_RECEIVE_LATENCY.with_label_values(&[stage, message_type]).observe(latency);
 }

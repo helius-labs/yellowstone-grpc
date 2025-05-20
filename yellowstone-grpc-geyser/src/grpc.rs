@@ -1,21 +1,25 @@
-use lz4_flex::block::compress_prepend_size;
 use {
     crate::{
         config::{ConfigGrpc, ConfigTokio},
-        metrics::{self, DebugClientMessage},
+        metrics::{
+            self, record_message_latency, record_message_latency_helper, DebugClientMessage,
+        },
         version::GrpcVersionInfo,
     },
-    ::metrics::histogram,
     anyhow::Context,
+    futures::Stream,
     log::{error, info},
+    lz4_flex::block::compress_prepend_size,
     prost_types::Timestamp,
     solana_sdk::clock::{Slot, MAX_RECENT_BLOCKHASHES},
     std::{
         collections::{BTreeMap, HashMap},
+        pin::Pin,
         sync::{
             atomic::{AtomicUsize, Ordering},
             Arc,
         },
+        task::Poll,
         time::SystemTime,
     },
     tokio::{
@@ -25,7 +29,6 @@ use {
         task::spawn_blocking,
         time::{sleep, Duration, Instant},
     },
-    tokio_stream::wrappers::ReceiverStream,
     tonic::{
         service::interceptor::interceptor,
         transport::{
@@ -533,6 +536,7 @@ impl GrpcService {
         tokio::spawn(async move {
             let mut sequence = 0;
             while let Some(message) = messages_rx.recv().await {
+                record_message_latency(&message, "received_message");
                 let tx = sequencer_txs[sequence % num_compression_workers].clone();
                 tx.send((sequence, message)).unwrap();
                 sequence += 1;
@@ -566,6 +570,7 @@ impl GrpcService {
                     } else {
                         message
                     };
+                    record_message_latency(&mutated_message, "compressed_message");
                     compressed_mpsc_tx
                         .send((sequence, mutated_message))
                         .unwrap();
@@ -582,6 +587,7 @@ impl GrpcService {
                 loop {
                     if messages.contains_key(&next_sequence) {
                         let message = messages.remove(&next_sequence).unwrap();
+                        record_message_latency(&message, "rearranged_message");
                         rearrange_tx.send(message).unwrap();
                         next_sequence += 1;
                     } else {
@@ -1033,13 +1039,17 @@ impl GrpcService {
                         };
 
                         if commitment == filter.get_commitment_level() {
+                            for (_, message) in messages.iter() {
+                                record_message_latency(message, "received_message_for_filtering");
+                            }
                             for (_msgid, message) in messages.iter() {
-                                let time_since_created_ms = message.time_since_created_ms();
+                                let created_at = message.created_at();
                                 let message_type = message.type_name();
                                 for message in filter.get_updates(message, Some(commitment)) {
+                                    record_message_latency_helper(created_at, "filtered_message", message_type);
                                     match stream_tx.try_send(Ok(message)) {
                                         Ok(()) => {
-                                            histogram!("message_send_latency_ms", "message_type" => message_type, "client_id" => id.to_string()).record(time_since_created_ms);
+                                            record_message_latency_helper(created_at, "sent_message_after_filtering", message_type);
                                         }
                                         Err(mpsc::error::TrySendError::Full(_)) => {
                                             error!("client #{id}: lagged to send an update");
@@ -1140,9 +1150,30 @@ impl GrpcService {
     }
 }
 
+pub struct ReceiverStreamWithMetrics {
+    inner: mpsc::Receiver<TonicResult<FilteredUpdate>>,
+}
+
+impl Stream for ReceiverStreamWithMetrics {
+    type Item = TonicResult<FilteredUpdate>;
+
+    fn poll_next(
+        self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> Poll<Option<Self::Item>> {
+        let result = Pin::new(&mut self.get_mut().inner).poll_recv(cx);
+        if let Poll::Ready(Some(Ok(message))) = &result {
+            let created_at = message.created_at;
+            let message_type = message.message.type_name();
+            record_message_latency_helper(created_at, "received_message_for_sending", message_type);
+        }
+        result
+    }
+}
+
 #[tonic::async_trait]
 impl Geyser for GrpcService {
-    type SubscribeStream = ReceiverStream<TonicResult<FilteredUpdate>>;
+    type SubscribeStream = ReceiverStreamWithMetrics;
 
     async fn subscribe(
         &self,
@@ -1270,7 +1301,9 @@ impl Geyser for GrpcService {
             },
         ));
 
-        Ok(Response::new(ReceiverStream::new(stream_rx)))
+        Ok(Response::new(ReceiverStreamWithMetrics {
+            inner: stream_rx,
+        }))
     }
 
     async fn ping(&self, request: Request<PingRequest>) -> Result<Response<PongResponse>, Status> {
