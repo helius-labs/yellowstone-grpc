@@ -1,6 +1,6 @@
 [package]
 name = "yellowstone-grpc-geyser"
-version = "2.2.0"
+version = "6.0.0"
 authors = { workspace = true }
 edition = { workspace = true }
 description = "Yellowstone gRPC Geyser Plugin"
@@ -17,7 +17,8 @@ crate-type = ["cdylib", "rlib"]
 name = "config-check"
 
 [dependencies]
-affinity = { workspace = true }
+affinity-linux = { workspace = true }
+metrics-exporter-statsd = { workspace = true }
 agave-geyser-plugin-interface = { workspace = true }
 anyhow = { workspace = true }
 base64 = { workspace = true }
@@ -49,6 +50,8 @@ tonic = { workspace = true, features = ["gzip", "zstd", "tls", "tls-roots"] }
 tonic-health = { workspace = true }
 yellowstone-grpc-proto = { workspace = true, features = ["convert", "plugin"] }
 lz4_flex = { workspace = true }
+metrics = { workspace = true }
+
 [build-dependencies]
 anyhow = { workspace = true }
 cargo-lock = { workspace = true }
@@ -57,3 +60,7 @@ vergen = { workspace = true, features = ["build", "rustc"] }
 
 [lints]
 workspace = true
+
+[features]
+default = []
+statsd = []

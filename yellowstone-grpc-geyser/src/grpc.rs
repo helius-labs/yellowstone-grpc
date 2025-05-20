@@ -4,6 +4,7 @@ use {
         metrics::{self, DebugClientMessage},
         version::GrpcVersionInfo,
     },
+    ::metrics::histogram,
     anyhow::Context,
     log::{error, info},
     prost_types::Timestamp,
@@ -45,7 +46,8 @@ use {
                 Filter,
             },
             message::{
-                CommitmentLevel, Message, MessageAccount, MessageAccountInfo, MessageBlock, MessageBlockMeta, MessageEntry, MessageSlot, MessageTransactionInfo
+                CommitmentLevel, Message, MessageBlock, MessageBlockMeta, MessageEntry,
+                MessageSlot, MessageTransactionInfo, SlotStatus,
             },
             proto::geyser_server::{Geyser, GeyserServer},
         },
@@ -107,13 +109,13 @@ impl BlockMetaStorage {
                 match message {
                     Message::Slot(msg) => {
                         match msg.status {
-                            CommitmentLevel::Processed => {
+                            SlotStatus::Processed => {
                                 storage.processed.replace(msg.slot);
                             }
-                            CommitmentLevel::Confirmed => {
+                            SlotStatus::Confirmed => {
                                 storage.confirmed.replace(msg.slot);
                             }
-                            CommitmentLevel::Finalized => {
+                            SlotStatus::Finalized => {
                                 storage.finalized.replace(msg.slot);
                             }
                             _ => {}
@@ -130,20 +132,20 @@ impl BlockMetaStorage {
                                 .or_insert_with(|| BlockhashStatus::new(msg.slot));
 
                             match msg.status {
-                                CommitmentLevel::Processed => {
+                                SlotStatus::Processed => {
                                     entry.processed = true;
                                 }
-                                CommitmentLevel::Confirmed => {
+                                SlotStatus::Confirmed => {
                                     entry.confirmed = true;
                                 }
-                                CommitmentLevel::Finalized => {
+                                SlotStatus::Finalized => {
                                     entry.finalized = true;
                                 }
                                 _ => {}
                             }
                         }
 
-                        if msg.status == CommitmentLevel::Finalized {
+                        if msg.status == SlotStatus::Finalized {
                             if let Some(keep_slot) = msg.slot.checked_sub(KEEP_SLOTS) {
                                 storage.blocks.retain(|slot, _block| *slot >= keep_slot);
                             }
@@ -202,7 +204,6 @@ impl BlockMetaStorage {
             CommitmentLevel::Processed => storage.processed,
             CommitmentLevel::Confirmed => storage.confirmed,
             CommitmentLevel::Finalized => storage.finalized,
-            _ => return Err(Status::internal("unreachable")),
         };
 
         match slot.and_then(|slot| storage.blocks.get(&slot)) {
@@ -231,7 +232,6 @@ impl BlockMetaStorage {
             CommitmentLevel::Processed => storage.processed,
             CommitmentLevel::Confirmed => storage.confirmed,
             CommitmentLevel::Finalized => storage.finalized,
-            _ => return Err(Status::internal("unreachable")),
         }
         .ok_or_else(|| Status::internal("startup"))?;
 
@@ -239,12 +239,10 @@ impl BlockMetaStorage {
             .blockhashes
             .get(blockhash)
             .map(|status| match commitment {
-                CommitmentLevel::Processed => Ok(status.processed),
-                CommitmentLevel::Confirmed => Ok(status.confirmed),
-                CommitmentLevel::Finalized => Ok(status.finalized),
-                _ => Err(Status::internal("unreachable")),
+                CommitmentLevel::Processed => status.processed,
+                CommitmentLevel::Confirmed => status.confirmed,
+                CommitmentLevel::Finalized => status.finalized,
             })
-            .transpose()?
             .unwrap_or(false);
 
         Ok(Response::new(IsBlockhashValidResponse { valid, slot }))
@@ -461,7 +459,8 @@ impl GrpcService {
             }
             if let Some(tokio_cpus) = config_tokio.affinity.clone() {
                 builder.on_thread_start(move || {
-                    affinity::set_thread_affinity(&tokio_cpus).expect("failed to set affinity")
+                    affinity_linux::set_thread_affinity(tokio_cpus.clone().into_iter())
+                        .expect("failed to set affinity")
                 });
             }
             builder
@@ -615,10 +614,10 @@ impl GrpcService {
                     match &message {
                         // On startup we can receive multiple Confirmed/Finalized slots without BlockMeta message
                         // With saved first Processed slot we can ignore errors caused by startup process
-                        Message::Slot(msg) if processed_first_slot.is_none() && msg.status == CommitmentLevel::Processed => {
+                        Message::Slot(msg) if processed_first_slot.is_none() && msg.status == SlotStatus::Processed => {
                             processed_first_slot = Some(msg.slot);
                         }
-                        Message::Slot(msg) if msg.status == CommitmentLevel::Finalized => {
+                        Message::Slot(msg) if msg.status == SlotStatus::Finalized => {
                             // keep extra 10 slots + slots for replay
                             if let Some(msg_slot) = msg.slot.checked_sub(10 + replay_stored_slots) {
                                 loop {
@@ -667,13 +666,13 @@ impl GrpcService {
                     let slot_messages = messages.entry(message.get_slot()).or_default();
                     if let Message::Slot(msg) = &message {
                         match msg.status {
-                            CommitmentLevel::Processed => {
+                            SlotStatus::Processed => {
                                 slot_messages.parent_slot = msg.parent;
                             },
-                            CommitmentLevel::Confirmed => {
+                            SlotStatus::Confirmed => {
                                 slot_messages.confirmed = true;
                             },
-                            CommitmentLevel::Finalized => {
+                            SlotStatus::Finalized => {
                                 slot_messages.finalized = true;
                             },
                             _ => {}
@@ -701,7 +700,7 @@ impl GrpcService {
                     match &message {
                         Message::BlockMeta(msg) => {
                             if slot_messages.block_meta.is_some() {
-                                metrics::update_invalid_blocks("unexpected message: BlockMeta (duplicate)");
+                                metrics::update_invalid_blocks("unexpected message: BlockMeta (duplicate)".to_string());
                             }
                             slot_messages.block_meta = Some(Arc::clone(msg));
                             sealed_block_msg = slot_messages.try_seal(&mut msgid_gen);
@@ -741,12 +740,12 @@ impl GrpcService {
                             .and_then(|entry| entry.parent_slot)
                             .map(|parent| (parent, messages.get_mut(&parent)))
                         {
-                            if (status == CommitmentLevel::Confirmed && !entry.confirmed) ||
-                                (status == CommitmentLevel::Finalized && !entry.finalized)
+                            if (status == SlotStatus::Confirmed && !entry.confirmed) ||
+                                (status == SlotStatus::Finalized && !entry.finalized)
                             {
-                                if status == CommitmentLevel::Confirmed {
+                                if status == SlotStatus::Confirmed {
                                     entry.confirmed = true;
-                                } else if status == CommitmentLevel::Finalized {
+                                } else if status == SlotStatus::Finalized {
                                     entry.finalized = true;
                                 }
 
@@ -767,10 +766,10 @@ impl GrpcService {
                     for message in messages_vec.into_iter().rev() {
                         if let Message::Slot(slot) = &message.1 {
                             let (mut confirmed_messages, mut finalized_messages) = match slot.status {
-                                CommitmentLevel::Processed | CommitmentLevel::FirstShredReceived | CommitmentLevel::Completed | CommitmentLevel::CreatedBank | CommitmentLevel::Dead => {
+                                SlotStatus::Processed | SlotStatus::FirstShredReceived | SlotStatus::Completed | SlotStatus::CreatedBank | SlotStatus::Dead => {
                                     (Vec::with_capacity(1), Vec::with_capacity(1))
                                 }
-                                CommitmentLevel::Confirmed => {
+                                SlotStatus::Confirmed => {
                                     if let Some(slot_messages) = messages.get_mut(&slot.slot) {
                                         if !slot_messages.sealed {
                                             slot_messages.confirmed_at = Some(slot_messages.messages.len());
@@ -783,7 +782,7 @@ impl GrpcService {
                                         .unwrap_or_default();
                                     (vec, Vec::with_capacity(1))
                                 }
-                                CommitmentLevel::Finalized => {
+                                SlotStatus::Finalized => {
                                     if let Some(slot_messages) = messages.get_mut(&slot.slot) {
                                         if !slot_messages.sealed {
                                             slot_messages.finalized_at = Some(slot_messages.messages.len());
@@ -949,14 +948,6 @@ impl GrpcService {
 
                         match message {
                             Some(Some((from_slot, filter_new))) => {
-                                if let Some(msg) = filter_new.get_pong_msg() {
-                                    if stream_tx.send(Ok(msg)).await.is_err() {
-                                        error!("client #{id}: stream closed");
-                                        break 'outer;
-                                    }
-                                    continue;
-                                }
-
                                 metrics::update_subscriptions(&endpoint, Some(&filter), Some(&filter_new));
                                 filter = filter_new;
                                 DebugClientMessage::maybe_send(&debug_client_tx, || DebugClientMessage::UpdateFilter { id, filter: Box::new(filter.clone()) });
@@ -1006,12 +997,15 @@ impl GrpcService {
                                     for (_msgid, message) in messages.iter() {
                                         for message in filter.get_updates(message, Some(commitment)) {
                                             match stream_tx.send(Ok(message)).await {
-                                                Ok(()) => {}
+                                                Ok(()) => {
+                                                }
                                                 Err(mpsc::error::SendError(_)) => {
                                                     error!("client #{id}: stream closed");
                                                     break 'outer;
                                                 }
                                             }
+
+                                            metrics::message_queue_size_dec();
                                         }
                                     }
                                 }
@@ -1041,9 +1035,13 @@ impl GrpcService {
 
                         if commitment == filter.get_commitment_level() {
                             for (_msgid, message) in messages.iter() {
+                                let time_since_created_ms = message.time_since_created_ms();
+                                let message_type = message.type_name();
                                 for message in filter.get_updates(message, Some(commitment)) {
                                     match stream_tx.try_send(Ok(message)) {
-                                        Ok(()) => {}
+                                        Ok(()) => {
+                                            histogram!("message_send_latency_ms", "message_type" => message_type, "client_id" => id.to_string()).record(time_since_created_ms);
+                                        }
                                         Err(mpsc::error::TrySendError::Full(_)) => {
                                             error!("client #{id}: lagged to send an update");
                                             tokio::spawn(async move {
@@ -1221,9 +1219,20 @@ impl Geyser for GrpcService {
                             filter_names.try_clean();
 
                             if let Err(error) = match Filter::new(&request, &config_filter_limits, &mut filter_names) {
-                                Ok(filter) => match incoming_client_tx.send(Some((request.from_slot ,filter))) {
-                                    Ok(()) => Ok(()),
-                                    Err(error) => Err(error.to_string()),
+                                Ok(filter) => {
+                                    if let Some(msg) = filter.get_pong_msg() {
+                                        if incoming_stream_tx.send(Ok(msg)).await.is_err() {
+                                            error!("client #{id}: stream closed");
+                                            let _ = incoming_client_tx.send(None);
+                                            break;
+                                        }
+                                        continue;
+                                    }
+
+                                    match incoming_client_tx.send(Some((request.from_slot, filter))) {
+                                        Ok(()) => Ok(()),
+                                        Err(error) => Err(error.to_string()),
+                                    }
                                 },
                                 Err(error) => Err(error.to_string()),
                             } {

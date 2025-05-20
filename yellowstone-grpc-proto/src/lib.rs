@@ -54,8 +54,8 @@ pub mod convert_to {
             pubkey::Pubkey,
             signature::Signature,
             transaction::{SanitizedTransaction, TransactionError},
-            transaction_context::TransactionReturnData,
         },
+        solana_transaction_context::TransactionReturnData,
         solana_transaction_status::{
             InnerInstruction, InnerInstructions, Reward, RewardType, TransactionStatusMeta,
             TransactionTokenBalance,
@@ -149,6 +149,7 @@ pub mod convert_to {
             loaded_addresses,
             return_data,
             compute_units_consumed,
+            cost_units: _,
         } = meta;
         let err = create_transaction_error(status);
         let inner_instructions_none = inner_instructions.is_none();
@@ -313,8 +314,8 @@ pub mod convert_from {
             pubkey::Pubkey,
             signature::Signature,
             transaction::{TransactionError, VersionedTransaction},
-            transaction_context::TransactionReturnData,
         },
+        solana_transaction_context::TransactionReturnData,
         solana_transaction_status::{
             ConfirmedBlock, InnerInstruction, InnerInstructions, Reward, RewardType,
             RewardsAndNumPartitions, TransactionStatusMeta, TransactionTokenBalance,
@@ -424,7 +425,9 @@ pub mod convert_from {
             VersionedMessage::V0(MessageV0 {
                 header,
                 account_keys: create_pubkey_vec(message.account_keys)?,
-                recent_blockhash: Hash::new(message.recent_blockhash.as_slice()),
+                recent_blockhash: Hash::new_from_array(
+                    <[u8; HASH_BYTES]>::try_from(message.recent_blockhash.as_slice()).unwrap(),
+                ),
                 instructions: create_message_instructions(message.instructions)?,
                 address_table_lookups,
             })
@@ -432,7 +435,9 @@ pub mod convert_from {
             VersionedMessage::Legacy(Message {
                 header,
                 account_keys: create_pubkey_vec(message.account_keys)?,
-                recent_blockhash: Hash::new(message.recent_blockhash.as_slice()),
+                recent_blockhash: Hash::new_from_array(
+                    <[u8; HASH_BYTES]>::try_from(message.recent_blockhash.as_slice()).unwrap(),
+                ),
                 instructions: create_message_instructions(message.instructions)?,
             })
         })
@@ -495,6 +500,7 @@ pub mod convert_from {
                 })
             },
             compute_units_consumed: meta.compute_units_consumed,
+            cost_units: None,
         })
     }
 

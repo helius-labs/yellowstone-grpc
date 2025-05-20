@@ -1,6 +1,6 @@
 [package]
 name = "yellowstone-grpc-proto"
-version = "2.2.0"
+version = "6.0.0"
 authors = { workspace = true }
 edition = { workspace = true }
 description = "Yellowstone gRPC Geyser Protobuf Definitions"
@@ -28,6 +28,7 @@ serde = { workspace = true, optional = true }
 solana-account-decoder = { workspace = true, optional = true }
 solana-sdk = { workspace = true, optional = true }
 solana-storage-proto = { workspace = true, optional = true }
+solana-transaction-context = { workspace = true, optional = true }
 solana-transaction-status = { workspace = true, optional = true }
 smallvec = { workspace = true, optional = true }
 spl-token-2022 = { workspace = true, optional = true }
@@ -51,6 +52,7 @@ convert = [
     "dep:solana-account-decoder",
     "dep:solana-sdk",
     "dep:solana-transaction-status",
+    "dep:solana-transaction-context",
 ]
 plugin = [
     "convert",
