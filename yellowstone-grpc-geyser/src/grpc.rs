@@ -584,7 +584,6 @@ impl GrpcService {
         loop {
             tokio::select! {
                 Some(message) = rearrange_rx.recv() => {
-                    metrics::message_queue_size_dec();
                     let msgid = msgid_gen.next();
 
                     // Update metrics
@@ -994,7 +993,6 @@ impl GrpcService {
                                                 }
                                             }
 
-                                            metrics::message_queue_size_dec();
                                         }
                                     }
                                 }
@@ -1106,7 +1104,6 @@ impl GrpcService {
         while *is_alive {
             let message = match snapshot_rx.try_recv() {
                 Ok(message) => {
-                    metrics::message_queue_size_dec();
                     message
                 }
                 Err(crossbeam_channel::TryRecvError::Empty) => {

@@ -41,7 +41,6 @@ pub struct PluginInner {
 impl PluginInner {
     fn send_message(&self, message: Message) {
         if self.grpc_channel.send(message).is_ok() {
-            metrics::message_queue_size_inc();
         }
     }
 }
