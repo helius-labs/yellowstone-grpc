@@ -1030,13 +1030,13 @@ impl GrpcService {
                                 record_message_latency(message, "received_message_for_filtering");
                             }
                             for (_msgid, message) in messages.iter() {
-                                let time_since_created_ms = message.time_since_created_ms();
+                                let created_at = message.created_at();
                                 let message_type = message.type_name();
                                 for message in filter.get_updates(message, Some(commitment)) {
-                                    record_message_latency_helper(time_since_created_ms, "filtered_message", message_type);
+                                    record_message_latency_helper(created_at, "filtered_message", message_type);
                                     match stream_tx.try_send(Ok(message)) {
                                         Ok(()) => {
-                                            record_message_latency_helper(time_since_created_ms, "sent_message_after_filtering", message_type);
+                                            record_message_latency_helper(created_at, "sent_message_after_filtering", message_type);
                                         }
                                         Err(mpsc::error::TrySendError::Full(_)) => {
                                             error!("client #{id}: lagged to send an update");

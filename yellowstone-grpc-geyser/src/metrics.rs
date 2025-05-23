@@ -1,36 +1,26 @@
 use {
-    crate::{config::ConfigPrometheus, version::VERSION as VERSION_INFO},
-    agave_geyser_plugin_interface::geyser_plugin_interface::SlotStatus as GeyserSlosStatus,
-    http_body_util::{combinators::BoxBody, BodyExt, Empty as BodyEmpty, Full as BodyFull},
-    hyper::{
+    crate::{config::ConfigPrometheus, version::VERSION as VERSION_INFO}, agave_geyser_plugin_interface::geyser_plugin_interface::SlotStatus as GeyserSlosStatus, http_body_util::{combinators::BoxBody, BodyExt, Empty as BodyEmpty, Full as BodyFull}, hyper::{
         body::{Bytes, Incoming as BodyIncoming},
         service::service_fn,
         Request, Response, StatusCode,
-    },
-    hyper_util::{
+    }, hyper_util::{
         rt::tokio::{TokioExecutor, TokioIo},
         server::conn::auto::Builder as ServerBuilder,
-    },
-    log::{error, info},
-    prometheus::{
+    }, log::{error, info}, prometheus::{
         HistogramOpts, HistogramVec, IntCounterVec, IntGauge, IntGaugeVec, Opts, Registry,
         TextEncoder,
-    },
-    solana_sdk::clock::Slot,
-    std::{
+    }, prost_types::Timestamp, solana_sdk::clock::Slot, std::{
         collections::{hash_map::Entry as HashMapEntry, HashMap},
         convert::Infallible,
         sync::{
             atomic::{AtomicI64, AtomicUsize, Ordering},
             Arc, Once,
         },
-    },
-    tokio::{
+    }, tokio::{
         net::TcpListener,
         sync::{mpsc, oneshot, Notify},
         task::JoinHandle,
-    },
-    yellowstone_grpc_proto::plugin::{filter::Filter, message::{Message, SlotStatus}},
+    }, yellowstone_grpc_proto::plugin::{filter::Filter, message::{time_since_timestamp, Message, SlotStatus}}
 };
 
 lazy_static::lazy_static! {
@@ -368,11 +358,12 @@ pub fn missed_status_message_inc(status: SlotStatus) {
 
 
 pub fn record_message_latency(message: &Message, stage: &'static str) {
-    let latency = message.time_since_created_ms();
+    let created_at = message.created_at();
     let message_type = message.type_name();
-    record_message_latency_helper(latency, stage, message_type);
+    record_message_latency_helper(created_at, stage, message_type);
 }
 
-pub fn record_message_latency_helper(latency: f64, stage: &'static str, message_type: &'static str) {
+pub fn record_message_latency_helper(created_at: Timestamp, stage: &'static str, message_type: &'static str) {
+    let latency = time_since_timestamp(created_at);
     MESSAGE_RECEIVE_LATENCY.with_label_values(&[stage, message_type]).observe(latency);
 }
