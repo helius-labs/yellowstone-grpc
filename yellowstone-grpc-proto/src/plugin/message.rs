@@ -600,7 +600,7 @@ impl Message {
     pub fn time_since_created_ms(&self) -> f64 {
         let current_time = Timestamp::from(SystemTime::now());
         let created_at = self.created_at();
-        (current_time.nanos - created_at.nanos) as f64 / 1_000_000.0
+        ((current_time.seconds - created_at.seconds) as f64 * 1000.0) + ((current_time.nanos - created_at.nanos) as f64 / 1_000_000.0)
     }
 
     pub fn type_name(&self) -> &'static str {
