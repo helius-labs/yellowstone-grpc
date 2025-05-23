@@ -188,6 +188,7 @@ impl PrometheusService {
                 };
             }
             register!(VERSION);
+            register!(MESSAGE_RECEIVE_LATENCY);
 
             VERSION
                 .with_label_values(&[
