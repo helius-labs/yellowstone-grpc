@@ -30,7 +30,7 @@ use {
         sync::{mpsc, oneshot, Notify},
         task::JoinHandle,
     },
-    yellowstone_grpc_proto::plugin::{filter::Filter, message::SlotStatus},
+    yellowstone_grpc_proto::plugin::{filter::Filter, message::{Message, SlotStatus}},
 };
 
 lazy_static::lazy_static! {
@@ -57,6 +57,12 @@ lazy_static::lazy_static! {
         Opts::new("missed_status_message_total", "Number of missed messages by commitment"),
         &["status"]
     ).unwrap();
+
+    static ref MESSAGE_RECEIVE_LATENCY: HistogramVec = HistogramVec::new(
+        HistogramOpts::new("message_receive_latency_ms", "Latency of message receive").buckets(vec![1.0, 5.0, 10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0, 200.0, 300.0, 400.0, 500.0, 1000.0, 2000.0, 3000.0, 4000.0, 5000.0]),
+        &["stage", "type"]
+    ).unwrap();
+
 }
 
 #[derive(Debug)]
@@ -355,4 +361,17 @@ pub fn missed_status_message_inc(status: SlotStatus) {
     MISSED_STATUS_MESSAGE
         .with_label_values(&[status.as_str()])
         .inc()
+}
+
+
+
+
+pub fn record_message_latency(message: &Message, stage: &'static str) {
+    let latency = message.time_since_created_ms();
+    let message_type = message.type_name();
+    record_message_latency_helper(latency, stage, message_type);
+}
+
+pub fn record_message_latency_helper(latency: f64, stage: &'static str, message_type: &'static str) {
+    MESSAGE_RECEIVE_LATENCY.with_label_values(&[stage, message_type]).observe(latency);
 }
