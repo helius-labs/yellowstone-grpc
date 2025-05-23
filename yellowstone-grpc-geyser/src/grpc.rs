@@ -1,7 +1,7 @@
 use {
     crate::{
         config::{ConfigGrpc, ConfigTokio},
-        metrics::{self, DebugClientMessage},
+        metrics::{self, record_message_latency, record_message_latency_helper, DebugClientMessage},
         version::GrpcVersionInfo,
     }, anyhow::Context, log::{error, info}, ::metrics::histogram, prost_types::Timestamp, solana_sdk::{
         clock::{Slot, MAX_RECENT_BLOCKHASHES},
@@ -525,6 +525,7 @@ impl GrpcService {
         tokio::spawn(async move {
             let mut sequence = 0;
             while let Some(message) = messages_rx.recv().await {
+                record_message_latency(&message, "received_message");
                 let tx = sequencer_txs[sequence % num_compression_workers].clone();
                 tx.send((sequence, message)).unwrap();
                 sequence += 1;
@@ -558,7 +559,8 @@ impl GrpcService {
                     } else {
                         message
                     };
-                    compressed_mpsc_tx.send((sequence, mutated_message)).unwrap();
+                    record_message_latency(&mutated_message, "compressed_message");
+                    compressed_mpsc_tx.send((sequence, mutated_message)).unwrap();   
                 }
             });
         }
@@ -572,6 +574,7 @@ impl GrpcService {
                 loop {
                     if messages.contains_key(&next_sequence) {
                         let message = messages.remove(&next_sequence).unwrap();
+                        record_message_latency(&message, "rearranged_message");
                         rearrange_tx.send(message).unwrap();
                         next_sequence += 1;
                     } else {
@@ -1021,6 +1024,9 @@ impl GrpcService {
                                 break 'outer;
                             }
                         };
+                        for (_, message) in messages.iter() {
+                            record_message_latency(message, "received_message_for_filtering");
+                        }
 
                         if commitment == filter.get_commitment_level() {
                             for (_msgid, message) in messages.iter() {
@@ -1029,7 +1035,7 @@ impl GrpcService {
                                 for message in filter.get_updates(message, Some(commitment)) {
                                     match stream_tx.try_send(Ok(message)) {
                                         Ok(()) => {
-                                            histogram!("message_send_latency_ms", "message_type" => message_type, "client_id" => id.to_string()).record(time_since_created_ms);
+                                            record_message_latency_helper(time_since_created_ms, "sent_message_after_filtering", message_type);
                                         }
                                         Err(mpsc::error::TrySendError::Full(_)) => {
                                             error!("client #{id}: lagged to send an update");
