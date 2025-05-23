@@ -1024,15 +1024,16 @@ impl GrpcService {
                                 break 'outer;
                             }
                         };
-                        for (_, message) in messages.iter() {
-                            record_message_latency(message, "received_message_for_filtering");
-                        }
 
                         if commitment == filter.get_commitment_level() {
+                            for (_, message) in messages.iter() {
+                                record_message_latency(message, "received_message_for_filtering");
+                            }
                             for (_msgid, message) in messages.iter() {
                                 let time_since_created_ms = message.time_since_created_ms();
                                 let message_type = message.type_name();
                                 for message in filter.get_updates(message, Some(commitment)) {
+                                    record_message_latency_helper(time_since_created_ms, "filtered_message", message_type);
                                     match stream_tx.try_send(Ok(message)) {
                                         Ok(()) => {
                                             record_message_latency_helper(time_since_created_ms, "sent_message_after_filtering", message_type);
