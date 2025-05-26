@@ -3,16 +3,14 @@ use {
         config::{ConfigGrpc, ConfigTokio},
         metrics::{self, record_message_latency, record_message_latency_helper, DebugClientMessage},
         version::GrpcVersionInfo,
-    }, anyhow::Context, log::{error, info}, ::metrics::histogram, prost_types::Timestamp, solana_sdk::{
+    }, anyhow::Context, futures::Stream, log::{error, info}, ::metrics::histogram, prost_types::Timestamp, solana_sdk::{
         clock::{Slot, MAX_RECENT_BLOCKHASHES},
         pubkey::Pubkey,
     }, std::{
-        collections::{BTreeMap, HashMap},
-        sync::{
+        collections::{BTreeMap, HashMap}, pin::Pin, sync::{
             atomic::{AtomicUsize, Ordering},
             Arc,
-        },
-        time::SystemTime,
+        }, task::Poll, time::SystemTime
     }, tokio::{
         fs,
         runtime::Builder,
@@ -49,6 +47,7 @@ use {
 };
 use yellowstone_grpc_proto::plugin::message::MessageAccountInfo;
 use lz4_flex::block::compress_prepend_size;
+
 
 #[derive(Debug)]
 struct BlockhashStatus {
@@ -1137,9 +1136,28 @@ impl GrpcService {
     }
 }
 
+
+pub struct ReceiverStreamWithMetrics {
+    inner: mpsc::Receiver<TonicResult<FilteredUpdate>>,
+}
+
+impl Stream for ReceiverStreamWithMetrics {
+    type Item = TonicResult<FilteredUpdate>;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Poll<Option<Self::Item>> {
+        let result = Pin::new(&mut self.get_mut().inner).poll_recv(cx);
+        if let Poll::Ready(Some(Ok(message))) = &result {
+            let created_at = message.created_at;
+            let message_type = message.message.type_name();
+            record_message_latency_helper(created_at, "received_message_for_sending", message_type);
+        }
+        result
+    }
+}
+
 #[tonic::async_trait]
 impl Geyser for GrpcService {
-    type SubscribeStream = ReceiverStream<TonicResult<FilteredUpdate>>;
+    type SubscribeStream = ReceiverStreamWithMetrics;
 
     async fn subscribe(
         &self,
@@ -1267,7 +1285,7 @@ impl Geyser for GrpcService {
             },
         ));
 
-        Ok(Response::new(ReceiverStream::new(stream_rx)))
+        Ok(Response::new(ReceiverStreamWithMetrics { inner: stream_rx }))
     }
 
     async fn ping(&self, request: Request<PingRequest>) -> Result<Response<PongResponse>, Status> {
