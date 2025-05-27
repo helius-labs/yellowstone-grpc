@@ -7,7 +7,7 @@ use {
         GeyserPlugin, GeyserPluginError, ReplicaAccountInfoVersions, ReplicaBlockInfoVersions,
         ReplicaEntryInfoVersions, ReplicaTransactionInfoVersions, Result as PluginResult,
         SlotStatus,
-    }, ::metrics::set_global_recorder, metrics_exporter_statsd::StatsdBuilder, std::{
+    }, std::{
         concat, env,
         sync::{
             atomic::{AtomicBool, AtomicU64, Ordering},

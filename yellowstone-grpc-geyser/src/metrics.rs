@@ -7,13 +7,13 @@ use {
         rt::tokio::{TokioExecutor, TokioIo},
         server::conn::auto::Builder as ServerBuilder,
     }, log::{error, info}, prometheus::{
-        HistogramOpts, HistogramVec, IntCounterVec, IntGauge, IntGaugeVec, Opts, Registry,
+        HistogramOpts, HistogramVec, IntCounterVec, Opts, Registry,
         TextEncoder,
     }, prost_types::Timestamp, solana_sdk::clock::Slot, std::{
         collections::{hash_map::Entry as HashMapEntry, HashMap},
         convert::Infallible,
         sync::{
-            atomic::{AtomicI64, AtomicUsize, Ordering},
+            atomic::{AtomicI64, Ordering},
             Arc, Once,
         },
     }, tokio::{

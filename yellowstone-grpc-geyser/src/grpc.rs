@@ -1,10 +1,7 @@
 use {
     crate::{
         config::{ConfigGrpc, ConfigTokio}, metrics::{self, record_message_latency, record_message_latency_helper, DebugClientMessage}, plugin::load_next_sequence_number, version::GrpcVersionInfo
-    }, anyhow::Context, futures::Stream, log::{error, info}, ::metrics::histogram, prost_types::Timestamp, solana_sdk::{
-        clock::{Slot, MAX_RECENT_BLOCKHASHES},
-        pubkey::Pubkey,
-    }, std::{
+    }, anyhow::Context, futures::Stream, log::{error, info}, prost_types::Timestamp, solana_sdk::clock::{Slot, MAX_RECENT_BLOCKHASHES}, std::{
         collections::{BTreeMap, HashMap}, pin::Pin, sync::{
             atomic::{AtomicUsize, Ordering},
             Arc,
@@ -15,7 +12,7 @@ use {
         sync::{broadcast, mpsc, oneshot, Mutex, Notify, RwLock, Semaphore},
         task::spawn_blocking,
         time::{sleep, Duration, Instant},
-    }, tokio_stream::wrappers::ReceiverStream, tonic::{
+    }, tonic::{
         service::interceptor::interceptor,
         transport::{
             server::{Server, TcpIncoming},
