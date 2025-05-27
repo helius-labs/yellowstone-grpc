@@ -17,7 +17,7 @@ publish = false
 
 [workspace.dependencies]
 affinity-linux = "1.0.1"
-agave-geyser-plugin-interface = { git = "https://github.com/helius-labs/agave", branch = "master-2.3-latest" }
+agave-geyser-plugin-interface = { git = "https://github.com/helius-labs/agave", branch = "master-2.3" }
 anyhow = "1.0.62"
 backoff = "0.4.0"
 base64 = "0.22.1"
@@ -51,12 +51,12 @@ prost_011 = { package = "prost", version = "0.11.9" }
 protobuf-src = "1.1.0"
 serde = "1.0.145"
 serde_json = "1.0.86"
-solana-account-decoder = { git = "https://github.com/helius-labs/agave", branch = "master-2.3-latest" }
+solana-account-decoder = { git = "https://github.com/helius-labs/agave", branch = "master-2.3" }
 solana-logger = { git = "https://github.com/helius-labs/solana-sdk", branch = "master-2.3-latest" }
-solana-sdk = { git = "https://github.com/helius-labs/solana-sdk", branch = "master-2.3-latest" }
-solana-storage-proto = { git = "https://github.com/helius-labs/agave", branch = "master-2.3-latest" }
-solana-transaction-status = { git = "https://github.com/helius-labs/agave", branch = "master-2.3-latest" }
-solana-transaction-context = { git = "https://github.com/helius-labs/agave", branch = "master-2.3-latest" }
+solana-sdk = { git = "https://github.com/helius-labs/solana-sdk", branch = "master-2.3" }
+solana-storage-proto = { git = "https://github.com/helius-labs/agave", branch = "master-2.3" }
+solana-transaction-status = { git = "https://github.com/helius-labs/agave", branch = "master-2.3" }
+solana-transaction-context = { git = "https://github.com/helius-labs/agave", branch = "master-2.3" }
 smallvec = "1.13.2"
 spl-token-2022 = "6.0.0"
 thiserror = "1.0.63"
@@ -83,7 +83,7 @@ codegen-units = 1
 
 
 [patch.crates-io]
-solana-account-decoder = { git = "https://github.com/helius-labs/agave", branch = "master-2.3-latest" }
+solana-account-decoder = { git = "https://github.com/helius-labs/agave", branch = "master-2.3" }
 solana-sdk = { git = "https://github.com/helius-labs/solana-sdk", branch = "master-2.3-latest" }
 solana-pubkey = { git = "https://github.com/helius-labs/solana-sdk", branch = "master-2.3-latest" }
 solana-instruction = { git = "https://github.com/helius-labs/solana-sdk", branch = "master-2.3-latest" }
