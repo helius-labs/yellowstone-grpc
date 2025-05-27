@@ -46,6 +46,8 @@ use {
     },
 };
 
+const NUM_SHARDS: u64 = 10;
+
 #[derive(Debug, thiserror::Error)]
 pub enum FilterError {
     #[error(transparent)]
@@ -243,7 +245,7 @@ impl Filter {
         let sequence_number = message.get_sequence_number();
 
         if let Some(shard) = self.shard {
-            if sequence_number % 10 != shard {
+            if sequence_number % NUM_SHARDS != shard {
                 return FilteredUpdates::new();
             }
         }
