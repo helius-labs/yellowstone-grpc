@@ -109,6 +109,6 @@ solana-fee-calculator = { git = "https://github.com/helius-labs/solana-sdk", bra
 solana-slot-hashes = { git = "https://github.com/helius-labs/solana-sdk", branch = "master-2.3-latest" }
 solana-slot-history = { git = "https://github.com/helius-labs/solana-sdk", branch = "master-2.3-latest" }
 solana-transaction-error = { git = "https://github.com/helius-labs/solana-sdk", branch = "master-2.3-latest" }
-solana-storage-proto = { git = "https://github.com/helius-labs/agave", branch = "master-2.3-latest" }
-solana-transaction-context = { git = "https://github.com/helius-labs/agave", branch = "master-2.3-latest" }
-solana-svm-feature-set = { git = "https://github.com/helius-labs/agave", branch = "master-2.3-latest" }
+solana-storage-proto = { git = "https://github.com/helius-labs/agave", branch = "master-2.3" }
+solana-transaction-context = { git = "https://github.com/helius-labs/agave", branch = "master-2.3" }
+solana-svm-feature-set = { git = "https://github.com/helius-labs/agave", branch = "master-2.3" }
