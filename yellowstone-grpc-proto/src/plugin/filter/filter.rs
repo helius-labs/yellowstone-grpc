@@ -110,6 +110,7 @@ pub struct Filter {
     commitment: CommitmentLevel,
     accounts_data_slice: FilterAccountsDataSlice,
     ping: Option<i32>,
+    shard: Option<u64>,
 }
 
 impl Default for Filter {
@@ -131,6 +132,7 @@ impl Default for Filter {
             commitment: CommitmentLevel::Processed,
             accounts_data_slice: FilterAccountsDataSlice::default(),
             ping: None,
+            shard: None,
         }
     }
 }
@@ -165,6 +167,7 @@ impl Filter {
                 limits.accounts.data_slice_max,
             )?,
             ping: config.ping.as_ref().map(|msg| msg.id),
+            shard: config.shard,
         })
     }
 
@@ -237,6 +240,15 @@ impl Filter {
         message: &Message,
         commitment: Option<CommitmentLevel>,
     ) -> FilteredUpdates {
+        let sequence_number = message.get_sequence_number();
+
+        if let Some(shard) = self.shard {
+            if sequence_number % shard != 0 {
+                return FilteredUpdates::new();
+            }
+        }
+
+
         match message {
             Message::Account(message) => self
                 .accounts

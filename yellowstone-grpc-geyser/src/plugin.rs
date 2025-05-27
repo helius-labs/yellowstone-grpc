@@ -3,30 +3,31 @@ use {
         config::Config,
         grpc::GrpcService,
         metrics::{self, PrometheusService},
-    },
-    ::metrics::set_global_recorder,
-    agave_geyser_plugin_interface::geyser_plugin_interface::{
+    }, agave_geyser_plugin_interface::geyser_plugin_interface::{
         GeyserPlugin, GeyserPluginError, ReplicaAccountInfoVersions, ReplicaBlockInfoVersions,
         ReplicaEntryInfoVersions, ReplicaTransactionInfoVersions, Result as PluginResult,
         SlotStatus,
-    },
-    metrics_exporter_statsd::StatsdBuilder,
-    std::{
+    }, ::metrics::set_global_recorder, metrics_exporter_statsd::StatsdBuilder, std::{
         concat, env,
         sync::{
-            atomic::{AtomicBool, Ordering},
+            atomic::{AtomicBool, AtomicU64, Ordering},
             Arc, Mutex,
         },
         time::Duration,
-    },
-    tokio::{
+    }, tokio::{
         runtime::{Builder, Runtime},
         sync::{mpsc, Notify},
-    },
-    yellowstone_grpc_proto::plugin::message::{
+    }, yellowstone_grpc_proto::plugin::message::{
         Message, MessageAccount, MessageBlockMeta, MessageEntry, MessageSlot, MessageTransaction,
-    },
+    }
 };
+
+// Add a global atomic sequence number for the messages
+static MESSAGE_SEQUENCE_NUMBER: AtomicU64 = AtomicU64::new(0);
+
+pub fn load_next_sequence_number() -> u64 {
+    MESSAGE_SEQUENCE_NUMBER.fetch_add(1, Ordering::Relaxed)
+}
 
 #[derive(Debug)]
 pub struct PluginInner {
@@ -167,7 +168,7 @@ impl GeyserPlugin for Plugin {
             if is_startup {
                 if let Some(channel) = inner.snapshot_channel.lock().unwrap().as_ref() {
                     let message =
-                        Message::Account(MessageAccount::from_geyser(account, slot, is_startup));
+                        Message::Account(MessageAccount::from_geyser(account, slot, is_startup, load_next_sequence_number()));
                     match channel.send(Box::new(message)) {
                         Ok(()) => metrics::message_queue_size_inc(),
                         Err(_) => {
@@ -181,7 +182,7 @@ impl GeyserPlugin for Plugin {
                 }
             } else {
                 let message =
-                    Message::Account(MessageAccount::from_geyser(account, slot, is_startup));
+                    Message::Account(MessageAccount::from_geyser(account, slot, is_startup, load_next_sequence_number()));
                 inner.send_message(message);
             }
 
@@ -203,7 +204,7 @@ impl GeyserPlugin for Plugin {
         status: &SlotStatus,
     ) -> PluginResult<()> {
         self.with_inner(|inner| {
-            let message = Message::Slot(MessageSlot::from_geyser(slot, parent, status));
+            let message = Message::Slot(MessageSlot::from_geyser(slot, parent, status, load_next_sequence_number()));
             inner.send_message(message);
             metrics::update_slot_status(status, slot);
             Ok(())
@@ -223,7 +224,7 @@ impl GeyserPlugin for Plugin {
                 ReplicaTransactionInfoVersions::V0_0_2(info) => info,
             };
 
-            let message = Message::Transaction(MessageTransaction::from_geyser(transaction, slot));
+            let message = Message::Transaction(MessageTransaction::from_geyser(transaction, slot, load_next_sequence_number()));
             inner.send_message(message);
 
             Ok(())
@@ -240,7 +241,7 @@ impl GeyserPlugin for Plugin {
                 ReplicaEntryInfoVersions::V0_0_2(entry) => entry,
             };
 
-            let message = Message::Entry(Arc::new(MessageEntry::from_geyser(entry)));
+            let message = Message::Entry(Arc::new(MessageEntry::from_geyser(entry, load_next_sequence_number())));
             inner.send_message(message);
 
             Ok(())
@@ -262,7 +263,7 @@ impl GeyserPlugin for Plugin {
                 ReplicaBlockInfoVersions::V0_0_4(info) => info,
             };
 
-            let message = Message::BlockMeta(Arc::new(MessageBlockMeta::from_geyser(blockinfo)));
+            let message = Message::BlockMeta(Arc::new(MessageBlockMeta::from_geyser(blockinfo, load_next_sequence_number())));
             inner.send_message(message);
 
             Ok(())

@@ -1,8 +1,6 @@
 use {
     crate::{
-        config::{ConfigGrpc, ConfigTokio},
-        metrics::{self, record_message_latency, record_message_latency_helper, DebugClientMessage},
-        version::GrpcVersionInfo,
+        config::{ConfigGrpc, ConfigTokio}, metrics::{self, record_message_latency, record_message_latency_helper, DebugClientMessage}, plugin::load_next_sequence_number, version::GrpcVersionInfo
     }, anyhow::Context, futures::Stream, log::{error, info}, ::metrics::histogram, prost_types::Timestamp, solana_sdk::{
         clock::{Slot, MAX_RECENT_BLOCKHASHES},
         pubkey::Pubkey,
@@ -553,6 +551,7 @@ impl GrpcService {
                             slot: account.slot,
                             is_startup: account.is_startup,
                             created_at: account.created_at,
+                            sequence_number: account.sequence_number,
                         };
                         Message::Account(message_account)
                     } else {
@@ -746,7 +745,8 @@ impl GrpcService {
                                     parent: entry.parent_slot,
                                     status,
                                     dead_error: None,
-                                    created_at: Timestamp::from(SystemTime::now())
+                                    created_at: Timestamp::from(SystemTime::now()),
+                                    sequence_number: load_next_sequence_number(),
                                 });
                                 messages_vec.push((msgid_gen.next(), message_slot));
                                 metrics::missed_status_message_inc(status);
