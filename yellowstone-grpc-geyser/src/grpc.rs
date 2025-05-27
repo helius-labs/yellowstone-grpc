@@ -507,81 +507,82 @@ impl GrpcService {
         let (_tx, rx) = mpsc::channel(1);
         let mut replay_stored_slots_rx = replay_stored_slots_rx.unwrap_or(rx);
 
-        let num_compression_workers = 10;
-        let mut sequencer_txs = Vec::with_capacity(num_compression_workers);
-        let mut sequencer_rxs = Vec::with_capacity(num_compression_workers);
-        for _ in 0..num_compression_workers {
-            let (tx, rx) = mpsc::unbounded_channel();
-            sequencer_txs.push(tx);
-            sequencer_rxs.push(rx);
-        }
+        // let num_compression_workers = 10;
+        // let mut sequencer_txs = Vec::with_capacity(num_compression_workers);
+        // let mut sequencer_rxs = Vec::with_capacity(num_compression_workers);
+        // for _ in 0..num_compression_workers {
+        //     let (tx, rx) = mpsc::unbounded_channel();
+        //     sequencer_txs.push(tx);
+        //     sequencer_rxs.push(rx);
+        // }
 
-        tokio::spawn(async move {
-            let mut sequence = 0;
-            while let Some(message) = messages_rx.recv().await {
-                record_message_latency(&message, "received_message");
-                let tx = sequencer_txs[sequence % num_compression_workers].clone();
-                tx.send((sequence, message)).unwrap();
-                sequence += 1;
-            }
-        });
+        // tokio::spawn(async move {
+        //     let mut sequence = 0;
+        //     while let Some(message) = messages_rx.recv().await {
+        //         record_message_latency(&message, "received_message");
+        //         let tx = sequencer_txs[sequence % num_compression_workers].clone();
+        //         tx.send((sequence, message)).unwrap();
+        //         sequence += 1;
+        //     }
+        // });
 
-        let (compressed_mpsc_tx, mut compressed_mpsc_rx) = mpsc::unbounded_channel();
-        for _ in 0..num_compression_workers {
-            let mut rx = sequencer_rxs.pop().unwrap();
-            let compressed_mpsc_tx = compressed_mpsc_tx.clone();
-            tokio::spawn(async move {
-                while let Some((sequence, message)) = rx.recv().await {
-                    let mutated_message = if let Message::Account(account) = &message {
-                        let account_info = MessageAccountInfo {
-                            pubkey: account.account.pubkey,
-                            lamports: account.account.lamports,
-                            owner: account.account.owner,
-                            executable: account.account.executable,
-                            rent_epoch: account.account.rent_epoch,
-                            data: compress_prepend_size(account.account.data.as_ref()),
-                            write_version: account.account.write_version,
-                            txn_signature: account.account.txn_signature,
-                        };
-                        let message_account = MessageAccount {
-                            account: Arc::new(account_info),
-                            slot: account.slot,
-                            is_startup: account.is_startup,
-                            created_at: account.created_at,
-                            sequence_number: account.sequence_number,
-                        };
-                        Message::Account(message_account)
-                    } else {
-                        message
-                    };
-                    record_message_latency(&mutated_message, "compressed_message");
-                    compressed_mpsc_tx.send((sequence, mutated_message)).unwrap();   
-                }
-            });
-        }
+        // let (compressed_mpsc_tx, mut compressed_mpsc_rx) = mpsc::unbounded_channel();
+        // for _ in 0..num_compression_workers {
+        //     let mut rx = sequencer_rxs.pop().unwrap();
+        //     let compressed_mpsc_tx = compressed_mpsc_tx.clone();
+        //     tokio::spawn(async move {
+        //         while let Some((sequence, message)) = rx.recv().await {
+        //             let mutated_message = if let Message::Account(account) = &message {
+        //                 let account_info = MessageAccountInfo {
+        //                     pubkey: account.account.pubkey,
+        //                     lamports: account.account.lamports,
+        //                     owner: account.account.owner,
+        //                     executable: account.account.executable,
+        //                     rent_epoch: account.account.rent_epoch,
+        //                     data: compress_prepend_size(account.account.data.as_ref()),
+        //                     write_version: account.account.write_version,
+        //                     txn_signature: account.account.txn_signature,
+        //                 };
+        //                 let message_account = MessageAccount {
+        //                     account: Arc::new(account_info),
+        //                     slot: account.slot,
+        //                     is_startup: account.is_startup,
+        //                     created_at: account.created_at,
+        //                     sequence_number: account.sequence_number,
+        //                 };
+        //                 Message::Account(message_account)
+        //             } else {
+        //                 message
+        //             };
+        //             record_message_latency(&mutated_message, "compressed_message");
+        //             compressed_mpsc_tx.send((sequence, mutated_message)).unwrap();   
+        //         }
+        //     });
+        // }
 
-        let (rearrange_tx, mut rearrange_rx) = mpsc::unbounded_channel();
-        tokio::spawn(async move {
-            let mut next_sequence = 0;
-            let mut messages: BTreeMap<usize, Message> = Default::default();
-            while let Some((sequence, message)) = compressed_mpsc_rx.recv().await {
-                messages.insert(sequence, message);
-                loop {
-                    if messages.contains_key(&next_sequence) {
-                        let message = messages.remove(&next_sequence).unwrap();
-                        record_message_latency(&message, "rearranged_message");
-                        rearrange_tx.send(message).unwrap();
-                        next_sequence += 1;
-                    } else {
-                        break;
-                    }
-                }
-            }
-        });
+        // let (rearrange_tx, mut rearrange_rx) = mpsc::unbounded_channel();
+        // tokio::spawn(async move {
+        //     let mut next_sequence = 0;
+        //     let mut messages: BTreeMap<usize, Message> = Default::default();
+        //     while let Some((sequence, message)) = compressed_mpsc_rx.recv().await {
+        //         messages.insert(sequence, message);
+        //         loop {
+        //             if messages.contains_key(&next_sequence) {
+        //                 let message = messages.remove(&next_sequence).unwrap();
+        //                 record_message_latency(&message, "rearranged_message");
+        //                 rearrange_tx.send(message).unwrap();
+        //                 next_sequence += 1;
+        //             } else {
+        //                 break;
+        //             }
+        //         }
+        //     }
+        // });
 
         loop {
             tokio::select! {
-                Some(message) = rearrange_rx.recv() => {
+                Some(message) = messages_rx.recv() => {
+                    record_message_latency(&message, "received_message");
                     metrics::message_queue_size_dec();
                     let msgid = msgid_gen.next();
 
