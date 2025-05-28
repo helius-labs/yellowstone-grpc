@@ -112,6 +112,7 @@ async fn main() -> anyhow::Result<()> {
             accounts_data_slice: vec![],
             ping: None,
             from_slot: None,
+            shard: None,
         })
         .await?;
 
