@@ -390,6 +390,7 @@ impl GrpcService {
             )
             .context("failed to load tls_config files")?;
             server_builder = server_builder
+                .tcp_nodelay(false)
                 .tls_config(ServerTlsConfig::new().identity(Identity::from_pem(cert, key)))
                 .context("failed to apply tls_config")?;
         }
