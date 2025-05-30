@@ -1223,7 +1223,14 @@ impl Stream for ReceiverStreamWithMetricsBatch {
                     return Poll::Ready(None);
                 }
                 Poll::Pending => {
-                    return Poll::Pending;
+                    if batch.len() > 0 {
+                        let batch = FilteredUpdateBatch {
+                            updates: batch.clone(),
+                        };
+                        return Poll::Ready(Some(Ok(batch)));
+                    } else {
+                        return Poll::Pending;
+                    }
                 }
             }
         }
