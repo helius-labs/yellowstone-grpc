@@ -1091,7 +1091,7 @@ impl GrpcService {
 #[tonic::async_trait]
 impl Geyser for GrpcService {
     type SubscribeStream = ReceiverStream<TonicResult<FilteredUpdate>>;
-    type SubscribeStreamBatch = ReceiverStream<TonicResult<FilteredUpdateBatch>>;
+    type SubscribeBatchStream = ReceiverStream<TonicResult<FilteredUpdateBatch>>;
 
     async fn subscribe(
         &self,
@@ -1214,7 +1214,7 @@ impl Geyser for GrpcService {
     async fn subscribe_batch(
         &self,
         request: Request<Streaming<SubscribeRequest>>,
-    ) -> TonicResult<Response<Self::SubscribeStreamBatch>> {
+    ) -> TonicResult<Response<Self::SubscribeBatchStream>> {
         todo!()
     }
 

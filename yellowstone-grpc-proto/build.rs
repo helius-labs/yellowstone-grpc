@@ -28,10 +28,8 @@ fn main() -> anyhow::Result<()> {
                 .name("subscribe")
                 .route_name("Subscribe")
                 .input_type("crate::geyser::SubscribeRequest")
-                // .output_type("crate::geyser::SubscribeUpdate")
                 .output_type("crate::plugin::filter::message::FilteredUpdate")
                 .codec_path("tonic::codec::ProstCodec")
-                // .codec_path("crate::plugin::codec::SubscribeCodec")
                 .client_streaming()
                 .server_streaming()
                 .build(),
