@@ -613,8 +613,8 @@ impl Message {
     }
 }
 
-
 pub fn time_since_timestamp(timestamp: Timestamp) -> f64 {
     let current_time = Timestamp::from(SystemTime::now());
-    ((current_time.seconds - timestamp.seconds) as f64 * 1000.0) + ((current_time.nanos - timestamp.nanos) as f64 / 1_000_000.0)
+    ((current_time.seconds - timestamp.seconds) as f64 * 1000.0)
+        + ((current_time.nanos - timestamp.nanos) as f64 / 1_000_000.0)
 }

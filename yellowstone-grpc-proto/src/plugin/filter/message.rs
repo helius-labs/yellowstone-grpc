@@ -1,11 +1,7 @@
 use {
     crate::{
         geyser::{
-            subscribe_update::UpdateOneof, SlotStatus as SlotStatusProto, SubscribeUpdate,
-            SubscribeUpdateAccount, SubscribeUpdateAccountInfo, SubscribeUpdateBlock,
-            SubscribeUpdateEntry, SubscribeUpdatePing, SubscribeUpdatePong, SubscribeUpdateSlot,
-            SubscribeUpdateTransaction, SubscribeUpdateTransactionInfo,
-            SubscribeUpdateTransactionStatus,
+            subscribe_update::UpdateOneof, SlotStatus as SlotStatusProto, SubscribeUpdate, SubscribeUpdateAccount, SubscribeUpdateAccountInfo, SubscribeUpdateBatch, SubscribeUpdateBlock, SubscribeUpdateEntry, SubscribeUpdatePing, SubscribeUpdatePong, SubscribeUpdateSlot, SubscribeUpdateTransaction, SubscribeUpdateTransactionInfo, SubscribeUpdateTransactionStatus
         },
         plugin::{
             filter::{name::FilterName, FilterAccountsDataSlice},
@@ -22,7 +18,7 @@ use {
             encode_key, encode_varint, encoded_len_varint, key_len, message, DecodeContext,
             WireType,
         },
-        DecodeError,
+        DecodeError, Message as ProstMessage,
     },
     prost_types::Timestamp,
     smallvec::SmallVec,
@@ -65,23 +61,32 @@ macro_rules! prost_repeated_encoded_len_map {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct FilteredUpdateBatch {
-    pub updates: Vec<FilteredUpdate>,
+    pub updates: Vec<Vec<u8>>,
+}
+
+impl FilteredUpdateBatch {
+    pub fn as_subscribe_update(&self) -> SubscribeUpdateBatch {
+        // Encode raw as subscribe update batch
+        let mut buf = Vec::new();
+        self.encode(&mut buf).unwrap();
+        SubscribeUpdateBatch::decode(&mut buf.as_slice()).unwrap()
+    }
 }
 
 impl prost::Message for FilteredUpdateBatch {
     fn encode_raw(&self, buf: &mut impl BufMut) {
         for update in self.updates.iter() {
             encode_key(1, WireType::LengthDelimited, buf);
-            encode_varint(update.encoded_len() as u64, buf);
-            update.encode_raw(buf);
+            encode_varint(update.len() as u64, buf);
+            buf.put_slice(update);
         }
     }
 
     fn encoded_len(&self) -> usize {
         let mut len = 0;
         for update in self.updates.iter() {
-            len += 1;
-            len += update.encoded_len();
+            len += 2;
+            len += update.len();
         }
         len
     }
@@ -432,7 +437,6 @@ impl FilteredUpdateOneof {
         }
     }
 }
-
 
 impl prost::Message for FilteredUpdateOneof {
     fn encode_raw(&self, buf: &mut impl BufMut) {
@@ -1037,7 +1041,7 @@ pub mod tests {
             convert_to,
             geyser::{SubscribeUpdate, SubscribeUpdateBlockMeta},
             plugin::{
-                filter::{name::FilterName, FilterAccountsDataSlice},
+                filter::{message::FilteredUpdateBatch, name::FilterName, FilterAccountsDataSlice},
                 message::{
                     MessageAccount, MessageAccountInfo, MessageBlockMeta, MessageEntry,
                     MessageSlot, MessageTransaction, MessageTransactionInfo, SlotStatus,
@@ -1306,6 +1310,18 @@ pub mod tests {
         );
     }
 
+    fn encode_decode_cmp_batch(filters: &[&str], messages: Vec<FilteredUpdateOneof>) {
+        let msg = FilteredUpdateBatch {
+            updates: messages.into_iter().map(|msg| Arc::new(FilteredUpdate {
+                filters: create_message_filters(filters),
+                message: msg,
+                created_at: Timestamp::from(SystemTime::now()),
+            })).collect(),
+        };
+        let update = msg.as_subscribe_update();
+        assert_eq!(msg.encoded_len(), update.encoded_len());
+    }
+
     #[test]
     fn test_message_account() {
         for (msg, data_slice) in create_accounts() {
@@ -1394,5 +1410,11 @@ pub mod tests {
         for entry in create_entries() {
             encode_decode_cmp(&["123"], FilteredUpdateOneof::entry(entry));
         }
+    }
+
+    #[test]
+    fn test_message_batch() {
+        let messages = create_entries();
+        encode_decode_cmp_batch(&["123"], messages.into_iter().map(|entry| FilteredUpdateOneof::entry(entry.clone())).collect());
     }
 }

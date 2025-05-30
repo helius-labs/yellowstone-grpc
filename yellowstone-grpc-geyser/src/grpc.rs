@@ -42,7 +42,7 @@ use {
         plugin::{
             filter::{
                 limits::FilterLimits,
-                message::{FilteredUpdate, FilteredUpdateOneof},
+                message::{FilteredUpdate, FilteredUpdateBatch, FilteredUpdateOneof},
                 name::FilterNames,
                 Filter,
             },
@@ -58,6 +58,7 @@ use {
             GetVersionRequest, GetVersionResponse, IsBlockhashValidRequest,
             IsBlockhashValidResponse, PingRequest, PongResponse, SubscribeRequest,
         },
+        prost::Message as ProstMessage,
     },
 };
 
@@ -1171,14 +1172,72 @@ impl Stream for ReceiverStreamWithMetrics {
     }
 }
 
-#[tonic::async_trait]
-impl Geyser for GrpcService {
-    type SubscribeStream = ReceiverStreamWithMetrics;
+pub struct ReceiverStreamWithMetricsBatch {
+    inner: ReceiverStreamWithMetrics,
+    batch_duration: Duration,
+}
 
-    async fn subscribe(
+impl ReceiverStreamWithMetricsBatch {
+    pub fn new(inner: ReceiverStreamWithMetrics, batch_duration: Duration) -> Self {
+        Self {
+            inner,
+            batch_duration,
+        }
+    }
+}
+
+impl Stream for ReceiverStreamWithMetricsBatch {
+    type Item = TonicResult<FilteredUpdateBatch>;
+
+    fn poll_next(
+        self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> Poll<Option<Self::Item>> {
+        let this = self.get_mut();
+
+        let batch_start = Instant::now();
+        let mut batch = Vec::new();
+
+        // Get next item from inner stream
+        loop {
+            match Pin::new(&mut this.inner).poll_next(cx) {
+                Poll::Ready(Some(Ok(update))) => {
+                    // Convert single update to batch
+                    let bytes = update.encode_to_vec();
+                    batch.push(bytes);
+                    if Instant::now().duration_since(batch_start) > this.batch_duration {
+                        let batch = FilteredUpdateBatch {
+                            updates: batch.clone(),
+                        };
+                        return Poll::Ready(Some(Ok(batch)));
+                    }
+                }
+                Poll::Ready(Some(Err(e))) => {
+                    return Poll::Ready(Some(Err(e)));
+                }
+                Poll::Ready(None) => {
+                    return Poll::Ready(None);
+                }
+                Poll::Pending => {
+                    if batch.len() > 0 {
+                        let batch = FilteredUpdateBatch {
+                            updates: batch.clone(),
+                        };
+                        return Poll::Ready(Some(Ok(batch)));
+                    } else {
+                        return Poll::Pending;
+                    }
+                }
+            }
+        }
+    }
+}
+
+impl GrpcService {
+    async fn subscribe_helper(
         &self,
         mut request: Request<Streaming<SubscribeRequest>>,
-    ) -> TonicResult<Response<Self::SubscribeStream>> {
+    ) -> TonicResult<ReceiverStreamWithMetrics> {
         let id = self.subscribe_id.fetch_add(1, Ordering::Relaxed);
 
         let x_request_snapshot = request.metadata().contains_key("x-request-snapshot");
@@ -1301,9 +1360,33 @@ impl Geyser for GrpcService {
             },
         ));
 
-        Ok(Response::new(ReceiverStreamWithMetrics {
-            inner: stream_rx,
-        }))
+        Ok(ReceiverStreamWithMetrics { inner: stream_rx })
+    }
+}
+
+#[tonic::async_trait]
+impl Geyser for GrpcService {
+    type SubscribeStream = ReceiverStreamWithMetrics;
+    type SubscribeBatchStream = ReceiverStreamWithMetricsBatch;
+
+    async fn subscribe(
+        &self,
+        request: Request<Streaming<SubscribeRequest>>,
+    ) -> TonicResult<Response<Self::SubscribeStream>> {
+        let subscribe_result = self.subscribe_helper(request).await?;
+        Ok(Response::new(subscribe_result))
+    }
+
+    async fn subscribe_batch(
+        &self,
+        request: Request<Streaming<SubscribeRequest>>,
+    ) -> TonicResult<Response<Self::SubscribeBatchStream>> {
+        let subscribe_result = self.subscribe_helper(request).await?;
+
+        Ok(Response::new(ReceiverStreamWithMetricsBatch::new(
+            subscribe_result,
+            Duration::from_millis(1),
+        )))
     }
 
     async fn ping(&self, request: Request<PingRequest>) -> Result<Response<PongResponse>, Status> {
