@@ -63,6 +63,44 @@ macro_rules! prost_repeated_encoded_len_map {
     }};
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct FilteredUpdateBatch {
+    pub updates: Vec<FilteredUpdate>,
+}
+
+impl prost::Message for FilteredUpdateBatch {
+    fn encode_raw(&self, buf: &mut impl BufMut) {
+        for update in self.updates.iter() {
+            encode_key(1, WireType::LengthDelimited, buf);
+            encode_varint(update.encoded_len() as u64, buf);
+            update.encode_raw(buf);
+        }
+    }
+
+    fn encoded_len(&self) -> usize {
+        let mut len = 0;
+        for update in self.updates.iter() {
+            len += 1;
+            len += update.encoded_len();
+        }
+        len
+    }
+
+    fn merge_field(
+        &mut self,
+        _tag: u32,
+        _wire_type: WireType,
+        _buf: &mut impl Buf,
+        _ctx: DecodeContext,
+    ) -> Result<(), DecodeError> {
+        unimplemented!()
+    }
+
+    fn clear(&mut self) {
+        unimplemented!()
+    }
+}
+
 pub type FilteredUpdates = SmallVec<[FilteredUpdate; 2]>;
 
 #[derive(Debug, Clone, PartialEq)]

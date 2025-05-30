@@ -38,6 +38,15 @@ fn main() -> anyhow::Result<()> {
         )
         .method(
             Method::builder()
+                .name("subscribe_batch")
+                .route_name("SubscribeBatch")
+                .input_type("crate::geyser::SubscribeRequestBatch")
+                .output_type("crate::geyser::SubscribeUpdateBatch")
+                .codec_path("tonic::codec::ProstCodec")
+                .build(),
+        )
+        .method(
+            Method::builder()
                 .name("ping")
                 .route_name("Ping")
                 .input_type("crate::geyser::PingRequest")
