@@ -131,6 +131,10 @@ message SubscribeUpdate {
   google.protobuf.Timestamp created_at = 11;
 }
 
+message SubscribeUpdateBatch {
+  repeated SubscribeUpdate updates = 1;
+}
+
 message SubscribeUpdateAccount {
   SubscribeUpdateAccountInfo account = 1;
   uint64 slot = 2;
