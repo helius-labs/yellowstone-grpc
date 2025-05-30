@@ -34,6 +34,8 @@ use {
         time::SystemTime,
     },
 };
+use crate::prelude::SubscribeUpdateBatch;
+use prost::Message as ProstMessage;
 
 #[inline]
 pub fn prost_field_encoded_len(tag: u32, len: usize) -> usize {
@@ -64,6 +66,53 @@ macro_rules! prost_repeated_encoded_len_map {
 }
 
 pub type FilteredUpdates = SmallVec<[FilteredUpdate; 2]>;
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct FilteredUpdateBatch {
+    pub updates: Vec<Arc<FilteredUpdate>>,
+}
+
+impl FilteredUpdateBatch {
+    pub fn as_subscribe_update(&self) -> SubscribeUpdateBatch {
+        // Encode raw as subscribe update batch
+        let mut buf = Vec::new();
+        self.encode(&mut buf).unwrap();
+        SubscribeUpdateBatch::decode(&mut buf.as_slice()).unwrap()
+    }
+}
+
+impl prost::Message for FilteredUpdateBatch {
+    fn encode_raw(&self, buf: &mut impl BufMut) {
+        for update in self.updates.iter() {
+            encode_key(1, WireType::LengthDelimited, buf);
+            encode_varint(update.encoded_len() as u64, buf);
+            update.encode_raw(buf);
+        }
+    }
+
+    fn encoded_len(&self) -> usize {
+        let mut len = 0;
+        for update in self.updates.iter() {
+            len += 2;
+            len += update.encoded_len();
+        }
+        len
+    }
+
+    fn merge_field(
+        &mut self,
+        _tag: u32,
+        _wire_type: WireType,
+        _buf: &mut impl Buf,
+        _ctx: DecodeContext,
+    ) -> Result<(), DecodeError> {
+        unimplemented!()
+    }
+
+    fn clear(&mut self) {
+        unimplemented!()
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct FilteredUpdate {
