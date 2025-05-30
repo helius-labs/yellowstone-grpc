@@ -40,9 +40,11 @@ fn main() -> anyhow::Result<()> {
             Method::builder()
                 .name("subscribe_batch")
                 .route_name("SubscribeBatch")
-                .input_type("crate::geyser::SubscribeRequestBatch")
-                .output_type("crate::geyser::SubscribeUpdateBatch")
+                .input_type("crate::geyser::SubscribeRequest")
+                .output_type("crate::plugin::filter::message::FilteredUpdateBatch")
                 .codec_path("tonic::codec::ProstCodec")
+                .client_streaming()
+                .server_streaming()
                 .build(),
         )
         .method(

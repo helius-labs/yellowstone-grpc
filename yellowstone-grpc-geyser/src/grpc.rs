@@ -1,39 +1,60 @@
+use lz4_flex::block::compress_prepend_size;
+use yellowstone_grpc_proto::plugin::message::MessageAccountInfo;
 use {
     crate::{
         config::{ConfigGrpc, ConfigTokio},
-        metrics::{self, record_message_latency, record_message_latency_helper, DebugClientMessage},
+        metrics::{
+            self, record_message_latency, record_message_latency_helper, DebugClientMessage,
+        },
         version::GrpcVersionInfo,
-    }, anyhow::Context, futures::Stream, log::{error, info}, ::metrics::histogram, prost_types::Timestamp, solana_sdk::{
+    },
+    ::metrics::histogram,
+    anyhow::Context,
+    futures::{pin_mut, Stream},
+    log::{error, info},
+    prost_types::Timestamp,
+    solana_sdk::{
         clock::{Slot, MAX_RECENT_BLOCKHASHES},
         pubkey::Pubkey,
-    }, std::{
-        collections::{BTreeMap, HashMap}, pin::Pin, sync::{
+    },
+    std::{
+        collections::{BTreeMap, HashMap},
+        pin::Pin,
+        sync::{
             atomic::{AtomicUsize, Ordering},
             Arc,
-        }, task::Poll, time::SystemTime
-    }, tokio::{
+        },
+        task::Poll,
+        time::SystemTime,
+    },
+    tokio::{
         fs,
         runtime::Builder,
         sync::{broadcast, mpsc, oneshot, Mutex, Notify, RwLock, Semaphore},
         task::spawn_blocking,
         time::{sleep, Duration, Instant},
-    }, tokio_stream::wrappers::ReceiverStream, tonic::{
+    },
+    tokio_stream::wrappers::ReceiverStream,
+    tonic::{
         service::interceptor::interceptor,
         transport::{
             server::{Server, TcpIncoming},
             Identity, ServerTlsConfig,
         },
         Request, Response, Result as TonicResult, Status, Streaming,
-    }, tonic_health::server::health_reporter, yellowstone_grpc_proto::{
+    },
+    tonic_health::server::health_reporter,
+    yellowstone_grpc_proto::{
         plugin::{
             filter::{
                 limits::FilterLimits,
-                message::{FilteredUpdate, FilteredUpdateOneof},
+                message::{FilteredUpdate, FilteredUpdateBatch, FilteredUpdateOneof},
                 name::FilterNames,
                 Filter,
             },
             message::{
-                CommitmentLevel, Message, MessageAccount, MessageBlock, MessageBlockMeta, MessageEntry, MessageSlot, MessageTransactionInfo, SlotStatus
+                CommitmentLevel, Message, MessageAccount, MessageBlock, MessageBlockMeta,
+                MessageEntry, MessageSlot, MessageTransactionInfo, SlotStatus,
             },
             proto::geyser_server::{Geyser, GeyserServer},
         },
@@ -43,11 +64,8 @@ use {
             GetVersionRequest, GetVersionResponse, IsBlockhashValidRequest,
             IsBlockhashValidResponse, PingRequest, PongResponse, SubscribeRequest,
         },
-    }
+    },
 };
-use yellowstone_grpc_proto::plugin::message::MessageAccountInfo;
-use lz4_flex::block::compress_prepend_size;
-
 
 #[derive(Debug)]
 struct BlockhashStatus {
@@ -559,7 +577,9 @@ impl GrpcService {
                         message
                     };
                     record_message_latency(&mutated_message, "compressed_message");
-                    compressed_mpsc_tx.send((sequence, mutated_message)).unwrap();   
+                    compressed_mpsc_tx
+                        .send((sequence, mutated_message))
+                        .unwrap();
                 }
             });
         }
@@ -1136,7 +1156,6 @@ impl GrpcService {
     }
 }
 
-
 pub struct ReceiverStreamWithMetrics {
     inner: mpsc::Receiver<TonicResult<FilteredUpdate>>,
 }
@@ -1144,7 +1163,10 @@ pub struct ReceiverStreamWithMetrics {
 impl Stream for ReceiverStreamWithMetrics {
     type Item = TonicResult<FilteredUpdate>;
 
-    fn poll_next(self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Poll<Option<Self::Item>> {
+    fn poll_next(
+        self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> Poll<Option<Self::Item>> {
         let result = Pin::new(&mut self.get_mut().inner).poll_recv(cx);
         if let Poll::Ready(Some(Ok(message))) = &result {
             let created_at = message.created_at;
@@ -1155,14 +1177,64 @@ impl Stream for ReceiverStreamWithMetrics {
     }
 }
 
-#[tonic::async_trait]
-impl Geyser for GrpcService {
-    type SubscribeStream = ReceiverStreamWithMetrics;
+pub struct ReceiverStreamWithMetricsBatch {
+    inner: ReceiverStreamWithMetrics,
+    batch_duration: Duration,
+}
 
-    async fn subscribe(
+impl ReceiverStreamWithMetricsBatch {
+    pub fn new(inner: ReceiverStreamWithMetrics, batch_duration: Duration) -> Self {
+        Self {
+            inner,
+            batch_duration,
+        }
+    }
+}
+
+impl Stream for ReceiverStreamWithMetricsBatch {
+    type Item = TonicResult<FilteredUpdateBatch>;
+
+    fn poll_next(
+        self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> Poll<Option<Self::Item>> {
+        let this = self.get_mut();
+
+        let batch_start = Instant::now();
+        let mut batch = Vec::new();
+
+        // Get next item from inner stream
+        loop {
+            match Pin::new(&mut this.inner).poll_next(cx) {
+                Poll::Ready(Some(Ok(update))) => {
+                    // Convert single update to batch
+                    batch.push(update.into());
+                    if Instant::now().duration_since(batch_start) > this.batch_duration {
+                        let batch = FilteredUpdateBatch {
+                            updates: batch.clone(),
+                        };
+                        return Poll::Ready(Some(Ok(batch)));
+                    }
+                }
+                Poll::Ready(Some(Err(e))) => {
+                    return Poll::Ready(Some(Err(e)));
+                }
+                Poll::Ready(None) => {
+                    return Poll::Ready(None);
+                }
+                Poll::Pending => {
+                    return Poll::Pending;
+                }
+            }
+        }
+    }
+}
+
+impl GrpcService {
+    async fn subscribe_helper(
         &self,
         mut request: Request<Streaming<SubscribeRequest>>,
-    ) -> TonicResult<Response<Self::SubscribeStream>> {
+    ) -> TonicResult<ReceiverStreamWithMetrics> {
         let id = self.subscribe_id.fetch_add(1, Ordering::Relaxed);
 
         let x_request_snapshot = request.metadata().contains_key("x-request-snapshot");
@@ -1285,7 +1357,33 @@ impl Geyser for GrpcService {
             },
         ));
 
-        Ok(Response::new(ReceiverStreamWithMetrics { inner: stream_rx }))
+        Ok(ReceiverStreamWithMetrics { inner: stream_rx })
+    }
+}
+
+#[tonic::async_trait]
+impl Geyser for GrpcService {
+    type SubscribeStream = ReceiverStreamWithMetrics;
+    type SubscribeBatchStream = ReceiverStreamWithMetricsBatch;
+
+    async fn subscribe(
+        &self,
+        request: Request<Streaming<SubscribeRequest>>,
+    ) -> TonicResult<Response<Self::SubscribeStream>> {
+        let subscribe_result = self.subscribe_helper(request).await?;
+        Ok(Response::new(subscribe_result))
+    }
+
+    async fn subscribe_batch(
+        &self,
+        request: Request<Streaming<SubscribeRequest>>,
+    ) -> TonicResult<Response<Self::SubscribeBatchStream>> {
+        let subscribe_result = self.subscribe_helper(request).await?;
+
+        Ok(Response::new(ReceiverStreamWithMetricsBatch::new(
+            subscribe_result,
+            Duration::from_millis(1),
+        )))
     }
 
     async fn ping(&self, request: Request<PingRequest>) -> Result<Response<PongResponse>, Status> {
