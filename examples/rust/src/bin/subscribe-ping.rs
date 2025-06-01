@@ -48,7 +48,6 @@ async fn main() -> anyhow::Result<()> {
                     slots: maplit::hashmap! {
                         "".to_owned() => SubscribeRequestFilterSlots {
                             filter_by_commitment: Some(true),
-                            interslot_updates: Some(false)
                         }
                     },
                     commitment: Some(CommitmentLevel::Processed as i32),

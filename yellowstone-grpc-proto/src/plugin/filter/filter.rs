@@ -591,14 +591,12 @@ impl<'a> FilterAccountsMatch<'a> {
 #[derive(Debug, Default, Clone, Copy)]
 struct FilterSlotsInner {
     filter_by_commitment: bool,
-    interslot_updates: bool,
 }
 
 impl FilterSlotsInner {
     fn new(filter: SubscribeRequestFilterSlots) -> Self {
         Self {
             filter_by_commitment: filter.filter_by_commitment.unwrap_or_default(),
-            interslot_updates: filter.interslot_updates.unwrap_or_default(),
         }
     }
 }
@@ -641,11 +639,10 @@ impl FilterSlots {
                     || commitment
                         .map(|commitment| commitment == message.status)
                         .unwrap_or(false))
-                    && (inner.interslot_updates
-                        || matches!(
-                            message.status,
-                            SlotStatus::Processed | SlotStatus::Confirmed | SlotStatus::Finalized
-                        ))
+                    && matches!(
+                        message.status,
+                        SlotStatus::Processed | SlotStatus::Confirmed | SlotStatus::Finalized
+                    )
                 {
                     Some(name.clone())
                 } else {
