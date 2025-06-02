@@ -61,7 +61,7 @@ macro_rules! prost_repeated_encoded_len_map {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct FilteredUpdateBatch {
-    pub updates: Vec<Arc<FilteredUpdate>>,
+    pub updates: Vec<Vec<u8>>,
 }
 
 impl FilteredUpdateBatch {
@@ -77,8 +77,8 @@ impl prost::Message for FilteredUpdateBatch {
     fn encode_raw(&self, buf: &mut impl BufMut) {
         for update in self.updates.iter() {
             encode_key(1, WireType::LengthDelimited, buf);
-            encode_varint(update.encoded_len() as u64, buf);
-            update.encode_raw(buf);
+            encode_varint(update.len() as u64, buf);
+            buf.put_slice(update);
         }
     }
 
@@ -86,7 +86,7 @@ impl prost::Message for FilteredUpdateBatch {
         let mut len = 0;
         for update in self.updates.iter() {
             len += 2;
-            len += update.encoded_len();
+            len += update.len();
         }
         len
     }

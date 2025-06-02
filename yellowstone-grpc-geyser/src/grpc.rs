@@ -66,6 +66,7 @@ use {
         },
     },
 };
+use yellowstone_grpc_proto::prost::Message as ProstMessage;
 
 #[derive(Debug)]
 struct BlockhashStatus {
@@ -1208,7 +1209,8 @@ impl Stream for ReceiverStreamWithMetricsBatch {
             match Pin::new(&mut this.inner).poll_next(cx) {
                 Poll::Ready(Some(Ok(update))) => {
                     // Convert single update to batch
-                    batch.push(update.into());
+                    let bytes = update.encode_to_vec();
+                    batch.push(bytes);
                     if Instant::now().duration_since(batch_start) > this.batch_duration {
                         let batch = FilteredUpdateBatch {
                             updates: batch.clone(),
