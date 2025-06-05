@@ -1,6 +1,6 @@
 [package]
 name = "yellowstone-grpc-proto"
-version = "2.3.0"
+version = "6.0.0"
 authors = { workspace = true }
 edition = { workspace = true }
 description = "Yellowstone gRPC Geyser Protobuf Definitions"
@@ -52,7 +52,7 @@ convert = [
     "dep:solana-account-decoder",
     "dep:solana-sdk",
     "dep:solana-transaction-status",
-    "dep:solana-transaction-context"
+    "dep:solana-transaction-context",
 ]
 plugin = [
     "convert",

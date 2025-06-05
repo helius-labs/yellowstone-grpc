@@ -1,11 +1,7 @@
 use {
     crate::{
         geyser::{
-            subscribe_update::UpdateOneof, CommitmentLevel as CommitmentLevelProto,
-            SubscribeUpdate, SubscribeUpdateAccount, SubscribeUpdateAccountInfo,
-            SubscribeUpdateBlock, SubscribeUpdateEntry, SubscribeUpdatePing, SubscribeUpdatePong,
-            SubscribeUpdateSlot, SubscribeUpdateTransaction, SubscribeUpdateTransactionInfo,
-            SubscribeUpdateTransactionStatus,
+            subscribe_update::UpdateOneof, SlotStatus as SlotStatusProto, SubscribeUpdate, SubscribeUpdateAccount, SubscribeUpdateAccountInfo, SubscribeUpdateBatch, SubscribeUpdateBlock, SubscribeUpdateEntry, SubscribeUpdatePing, SubscribeUpdatePong, SubscribeUpdateSlot, SubscribeUpdateTransaction, SubscribeUpdateTransactionInfo, SubscribeUpdateTransactionStatus
         },
         plugin::{
             filter::{name::FilterName, FilterAccountsDataSlice},
@@ -22,7 +18,7 @@ use {
             encode_key, encode_varint, encoded_len_varint, key_len, message, DecodeContext,
             WireType,
         },
-        DecodeError,
+        DecodeError, Message as ProstMessage,
     },
     prost_types::Timestamp,
     smallvec::SmallVec,
@@ -36,7 +32,7 @@ use {
 };
 
 #[inline]
-pub fn prost_field_encoded_len(tag: u32, len: usize) -> usize {
+pub const fn prost_field_encoded_len(tag: u32, len: usize) -> usize {
     key_len(tag) + encoded_len_varint(len as u64) + len
 }
 
@@ -48,7 +44,7 @@ fn prost_bytes_encode_raw(tag: u32, value: &[u8], buf: &mut impl BufMut) {
 }
 
 #[inline]
-pub fn prost_bytes_encoded_len(tag: u32, value: &[u8]) -> usize {
+pub const fn prost_bytes_encoded_len(tag: u32, value: &[u8]) -> usize {
     prost_field_encoded_len(tag, value.len())
 }
 
@@ -61,6 +57,53 @@ macro_rules! prost_repeated_encoded_len_map {
                 .map(|len| encoded_len_varint(len as u64) + len)
                 .sum::<usize>()
     }};
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct FilteredUpdateBatch {
+    pub updates: Vec<Vec<u8>>,
+}
+
+impl FilteredUpdateBatch {
+    pub fn as_subscribe_update(&self) -> SubscribeUpdateBatch {
+        // Encode raw as subscribe update batch
+        let mut buf = Vec::new();
+        self.encode(&mut buf).unwrap();
+        SubscribeUpdateBatch::decode(&mut buf.as_slice()).unwrap()
+    }
+}
+
+impl prost::Message for FilteredUpdateBatch {
+    fn encode_raw(&self, buf: &mut impl BufMut) {
+        for update in self.updates.iter() {
+            encode_key(1, WireType::LengthDelimited, buf);
+            encode_varint(update.len() as u64, buf);
+            buf.put_slice(update);
+        }
+    }
+
+    fn encoded_len(&self) -> usize {
+        let mut len = 0;
+        for update in self.updates.iter() {
+            len += 2;
+            len += update.len();
+        }
+        len
+    }
+
+    fn merge_field(
+        &mut self,
+        _tag: u32,
+        _wire_type: WireType,
+        _buf: &mut impl Buf,
+        _ctx: DecodeContext,
+    ) -> Result<(), DecodeError> {
+        unimplemented!()
+    }
+
+    fn clear(&mut self) {
+        unimplemented!()
+    }
 }
 
 pub type FilteredUpdates = SmallVec<[FilteredUpdate; 2]>;
@@ -379,6 +422,20 @@ impl FilteredUpdateOneof {
     pub const fn entry(message: Arc<MessageEntry>) -> Self {
         Self::Entry(FilteredUpdateEntry(message))
     }
+
+    pub fn type_name(&self) -> &'static str {
+        match self {
+            FilteredUpdateOneof::Account(_) => "account",
+            FilteredUpdateOneof::Slot(_) => "slot",
+            FilteredUpdateOneof::Transaction(_) => "transaction",
+            FilteredUpdateOneof::TransactionStatus(_) => "transaction_status",
+            FilteredUpdateOneof::Block(_) => "block",
+            FilteredUpdateOneof::Ping => "ping",
+            FilteredUpdateOneof::Pong(_) => "pong",
+            FilteredUpdateOneof::BlockMeta(_) => "block_meta",
+            FilteredUpdateOneof::Entry(_) => "entry",
+        }
+    }
 }
 
 impl prost::Message for FilteredUpdateOneof {
@@ -565,14 +622,14 @@ impl DerefMut for FilteredUpdateSlot {
 
 impl prost::Message for FilteredUpdateSlot {
     fn encode_raw(&self, buf: &mut impl BufMut) {
-        let status = CommitmentLevelProto::from(self.status) as i32;
+        let status = SlotStatusProto::from(self.status) as i32;
         if self.slot != 0u64 {
             ::prost::encoding::uint64::encode(1u32, &self.slot, buf);
         }
         if let ::core::option::Option::Some(ref value) = self.parent {
             ::prost::encoding::uint64::encode(2u32, value, buf);
         }
-        if status != CommitmentLevelProto::default() as i32 {
+        if status != SlotStatusProto::default() as i32 {
             ::prost::encoding::int32::encode(3u32, &status, buf);
         }
         if let Some(error) = &self.dead_error {
@@ -581,7 +638,7 @@ impl prost::Message for FilteredUpdateSlot {
     }
 
     fn encoded_len(&self) -> usize {
-        let status = CommitmentLevelProto::from(self.status) as i32;
+        let status = SlotStatusProto::from(self.status) as i32;
 
         (if self.slot != 0u64 {
             ::prost::encoding::uint64::encoded_len(1u32, &self.slot)
@@ -589,7 +646,7 @@ impl prost::Message for FilteredUpdateSlot {
             0
         }) + self.parent.as_ref().map_or(0, |value| {
             ::prost::encoding::uint64::encoded_len(2u32, value)
-        }) + if status != CommitmentLevelProto::default() as i32 {
+        }) + if status != SlotStatusProto::default() as i32 {
             ::prost::encoding::int32::encoded_len(3u32, &status)
         } else {
             0
@@ -984,10 +1041,10 @@ pub mod tests {
             convert_to,
             geyser::{SubscribeUpdate, SubscribeUpdateBlockMeta},
             plugin::{
-                filter::{name::FilterName, FilterAccountsDataSlice},
+                filter::{message::FilteredUpdateBatch, name::FilterName, FilterAccountsDataSlice},
                 message::{
-                    CommitmentLevel, MessageAccount, MessageAccountInfo, MessageBlockMeta,
-                    MessageEntry, MessageSlot, MessageTransaction, MessageTransactionInfo,
+                    MessageAccount, MessageAccountInfo, MessageBlockMeta, MessageEntry,
+                    MessageSlot, MessageTransaction, MessageTransactionInfo, SlotStatus,
                 },
             },
         },
@@ -1253,6 +1310,18 @@ pub mod tests {
         );
     }
 
+    fn encode_decode_cmp_batch(filters: &[&str], messages: Vec<FilteredUpdateOneof>) {
+        let msg = FilteredUpdateBatch {
+            updates: messages.into_iter().map(|msg| Arc::new(FilteredUpdate {
+                filters: create_message_filters(filters),
+                message: msg,
+                created_at: Timestamp::from(SystemTime::now()),
+            })).collect(),
+        };
+        let update = msg.as_subscribe_update();
+        assert_eq!(msg.encoded_len(), update.encoded_len());
+    }
+
     #[test]
     fn test_message_account() {
         for (msg, data_slice) in create_accounts() {
@@ -1265,13 +1334,13 @@ pub mod tests {
         for slot in [0, 42] {
             for parent in [None, Some(0), Some(42)] {
                 for status in [
-                    CommitmentLevel::Processed,
-                    CommitmentLevel::Confirmed,
-                    CommitmentLevel::Finalized,
-                    CommitmentLevel::FirstShredReceived,
-                    CommitmentLevel::Completed,
-                    CommitmentLevel::CreatedBank,
-                    CommitmentLevel::Dead,
+                    SlotStatus::Processed,
+                    SlotStatus::Confirmed,
+                    SlotStatus::Finalized,
+                    SlotStatus::FirstShredReceived,
+                    SlotStatus::Completed,
+                    SlotStatus::CreatedBank,
+                    SlotStatus::Dead,
                 ] {
                     encode_decode_cmp(
                         &["123"],
@@ -1289,7 +1358,7 @@ pub mod tests {
                     FilteredUpdateOneof::slot(MessageSlot {
                         slot,
                         parent,
-                        status: CommitmentLevel::Dead,
+                        status: SlotStatus::Dead,
                         dead_error: Some("123".to_owned()),
                         created_at: Timestamp::from(SystemTime::now()),
                     }),
@@ -1341,5 +1410,11 @@ pub mod tests {
         for entry in create_entries() {
             encode_decode_cmp(&["123"], FilteredUpdateOneof::entry(entry));
         }
+    }
+
+    #[test]
+    fn test_message_batch() {
+        let messages = create_entries();
+        encode_decode_cmp_batch(&["123"], messages.into_iter().map(|entry| FilteredUpdateOneof::entry(entry.clone())).collect());
     }
 }

@@ -1,10 +1,16 @@
+use lz4_flex::block::compress_prepend_size;
+use yellowstone_grpc_proto::plugin::message::MessageAccountInfo;
 use {
     crate::{
         config::{ConfigGrpc, ConfigTokio},
-        metrics::{self, DebugClientMessage},
+        metrics::{
+            self, record_message_latency, record_message_latency_helper, DebugClientMessage,
+        },
         version::GrpcVersionInfo,
     },
+    ::metrics::histogram,
     anyhow::Context,
+    futures::{pin_mut, Stream},
     log::{error, info},
     prost_types::Timestamp,
     solana_sdk::{
@@ -13,10 +19,12 @@ use {
     },
     std::{
         collections::{BTreeMap, HashMap},
+        pin::Pin,
         sync::{
             atomic::{AtomicUsize, Ordering},
             Arc,
         },
+        task::Poll,
         time::SystemTime,
     },
     tokio::{
@@ -40,13 +48,13 @@ use {
         plugin::{
             filter::{
                 limits::FilterLimits,
-                message::{FilteredUpdate, FilteredUpdateOneof},
+                message::{FilteredUpdate, FilteredUpdateBatch, FilteredUpdateOneof},
                 name::FilterNames,
                 Filter,
             },
             message::{
-                CommitmentLevel, Message, MessageBlock, MessageBlockMeta, MessageEntry,
-                MessageSlot, MessageTransactionInfo,
+                CommitmentLevel, Message, MessageAccount, MessageBlock, MessageBlockMeta,
+                MessageEntry, MessageSlot, MessageTransactionInfo, SlotStatus,
             },
             proto::geyser_server::{Geyser, GeyserServer},
         },
@@ -58,6 +66,7 @@ use {
         },
     },
 };
+use yellowstone_grpc_proto::prost::Message as ProstMessage;
 
 #[derive(Debug)]
 struct BlockhashStatus {
@@ -107,13 +116,13 @@ impl BlockMetaStorage {
                 match message {
                     Message::Slot(msg) => {
                         match msg.status {
-                            CommitmentLevel::Processed => {
+                            SlotStatus::Processed => {
                                 storage.processed.replace(msg.slot);
                             }
-                            CommitmentLevel::Confirmed => {
+                            SlotStatus::Confirmed => {
                                 storage.confirmed.replace(msg.slot);
                             }
-                            CommitmentLevel::Finalized => {
+                            SlotStatus::Finalized => {
                                 storage.finalized.replace(msg.slot);
                             }
                             _ => {}
@@ -130,20 +139,20 @@ impl BlockMetaStorage {
                                 .or_insert_with(|| BlockhashStatus::new(msg.slot));
 
                             match msg.status {
-                                CommitmentLevel::Processed => {
+                                SlotStatus::Processed => {
                                     entry.processed = true;
                                 }
-                                CommitmentLevel::Confirmed => {
+                                SlotStatus::Confirmed => {
                                     entry.confirmed = true;
                                 }
-                                CommitmentLevel::Finalized => {
+                                SlotStatus::Finalized => {
                                     entry.finalized = true;
                                 }
                                 _ => {}
                             }
                         }
 
-                        if msg.status == CommitmentLevel::Finalized {
+                        if msg.status == SlotStatus::Finalized {
                             if let Some(keep_slot) = msg.slot.checked_sub(KEEP_SLOTS) {
                                 storage.blocks.retain(|slot, _block| *slot >= keep_slot);
                             }
@@ -202,7 +211,6 @@ impl BlockMetaStorage {
             CommitmentLevel::Processed => storage.processed,
             CommitmentLevel::Confirmed => storage.confirmed,
             CommitmentLevel::Finalized => storage.finalized,
-            _ => return Err(Status::internal("unreachable")),
         };
 
         match slot.and_then(|slot| storage.blocks.get(&slot)) {
@@ -231,7 +239,6 @@ impl BlockMetaStorage {
             CommitmentLevel::Processed => storage.processed,
             CommitmentLevel::Confirmed => storage.confirmed,
             CommitmentLevel::Finalized => storage.finalized,
-            _ => return Err(Status::internal("unreachable")),
         }
         .ok_or_else(|| Status::internal("startup"))?;
 
@@ -239,12 +246,10 @@ impl BlockMetaStorage {
             .blockhashes
             .get(blockhash)
             .map(|status| match commitment {
-                CommitmentLevel::Processed => Ok(status.processed),
-                CommitmentLevel::Confirmed => Ok(status.confirmed),
-                CommitmentLevel::Finalized => Ok(status.finalized),
-                _ => Err(Status::internal("unreachable")),
+                CommitmentLevel::Processed => status.processed,
+                CommitmentLevel::Confirmed => status.confirmed,
+                CommitmentLevel::Finalized => status.finalized,
             })
-            .transpose()?
             .unwrap_or(false);
 
         Ok(Response::new(IsBlockhashValidResponse { valid, slot }))
@@ -269,7 +274,6 @@ struct SlotMessages {
     messages_slots: Vec<(u64, Message)>,
     block_meta: Option<Arc<MessageBlockMeta>>,
     transactions: Vec<Arc<MessageTransactionInfo>>,
-    accounts_dedup: HashMap<Pubkey, (u64, usize)>, // (write_version, message_index)
     entries: Vec<Arc<MessageEntry>>,
     sealed: bool,
     entries_count: usize,
@@ -462,7 +466,8 @@ impl GrpcService {
             }
             if let Some(tokio_cpus) = config_tokio.affinity.clone() {
                 builder.on_thread_start(move || {
-                    affinity::set_thread_affinity(&tokio_cpus).expect("failed to set affinity")
+                    affinity_linux::set_thread_affinity(tokio_cpus.clone().into_iter())
+                        .expect("failed to set affinity")
                 });
             }
             builder
@@ -526,9 +531,82 @@ impl GrpcService {
         let (_tx, rx) = mpsc::channel(1);
         let mut replay_stored_slots_rx = replay_stored_slots_rx.unwrap_or(rx);
 
+        let num_compression_workers = 10;
+        let mut sequencer_txs = Vec::with_capacity(num_compression_workers);
+        let mut sequencer_rxs = Vec::with_capacity(num_compression_workers);
+        for _ in 0..num_compression_workers {
+            let (tx, rx) = mpsc::unbounded_channel();
+            sequencer_txs.push(tx);
+            sequencer_rxs.push(rx);
+        }
+
+        tokio::spawn(async move {
+            let mut sequence = 0;
+            while let Some(message) = messages_rx.recv().await {
+                record_message_latency(&message, "received_message");
+                let tx = sequencer_txs[sequence % num_compression_workers].clone();
+                tx.send((sequence, message)).unwrap();
+                sequence += 1;
+            }
+        });
+
+        let (compressed_mpsc_tx, mut compressed_mpsc_rx) = mpsc::unbounded_channel();
+        for _ in 0..num_compression_workers {
+            let mut rx = sequencer_rxs.pop().unwrap();
+            let compressed_mpsc_tx = compressed_mpsc_tx.clone();
+            tokio::spawn(async move {
+                while let Some((sequence, message)) = rx.recv().await {
+                    let mutated_message = if let Message::Account(account) = &message {
+                        let account_info = MessageAccountInfo {
+                            pubkey: account.account.pubkey,
+                            lamports: account.account.lamports,
+                            owner: account.account.owner,
+                            executable: account.account.executable,
+                            rent_epoch: account.account.rent_epoch,
+                            data: compress_prepend_size(account.account.data.as_ref()),
+                            write_version: account.account.write_version,
+                            txn_signature: account.account.txn_signature,
+                        };
+                        let message_account = MessageAccount {
+                            account: Arc::new(account_info),
+                            slot: account.slot,
+                            is_startup: account.is_startup,
+                            created_at: account.created_at,
+                        };
+                        Message::Account(message_account)
+                    } else {
+                        message
+                    };
+                    record_message_latency(&mutated_message, "compressed_message");
+                    compressed_mpsc_tx
+                        .send((sequence, mutated_message))
+                        .unwrap();
+                }
+            });
+        }
+
+        let (rearrange_tx, mut rearrange_rx) = mpsc::unbounded_channel();
+        tokio::spawn(async move {
+            let mut next_sequence = 0;
+            let mut messages: BTreeMap<usize, Message> = Default::default();
+            while let Some((sequence, message)) = compressed_mpsc_rx.recv().await {
+                messages.insert(sequence, message);
+                loop {
+                    if messages.contains_key(&next_sequence) {
+                        let message = messages.remove(&next_sequence).unwrap();
+                        record_message_latency(&message, "rearranged_message");
+                        rearrange_tx.send(message).unwrap();
+                        next_sequence += 1;
+                    } else {
+                        break;
+                    }
+                }
+            }
+        });
+
         loop {
             tokio::select! {
-                Some(message) = messages_rx.recv() => {
+                Some(message) = rearrange_rx.recv() => {
                     metrics::message_queue_size_dec();
                     let msgid = msgid_gen.next();
 
@@ -548,10 +626,10 @@ impl GrpcService {
                     match &message {
                         // On startup we can receive multiple Confirmed/Finalized slots without BlockMeta message
                         // With saved first Processed slot we can ignore errors caused by startup process
-                        Message::Slot(msg) if processed_first_slot.is_none() && msg.status == CommitmentLevel::Processed => {
+                        Message::Slot(msg) if processed_first_slot.is_none() && msg.status == SlotStatus::Processed => {
                             processed_first_slot = Some(msg.slot);
                         }
-                        Message::Slot(msg) if msg.status == CommitmentLevel::Finalized => {
+                        Message::Slot(msg) if msg.status == SlotStatus::Finalized => {
                             // keep extra 10 slots + slots for replay
                             if let Some(msg_slot) = msg.slot.checked_sub(10 + replay_stored_slots) {
                                 loop {
@@ -600,13 +678,13 @@ impl GrpcService {
                     let slot_messages = messages.entry(message.get_slot()).or_default();
                     if let Message::Slot(msg) = &message {
                         match msg.status {
-                            CommitmentLevel::Processed => {
+                            SlotStatus::Processed => {
                                 slot_messages.parent_slot = msg.parent;
                             },
-                            CommitmentLevel::Confirmed => {
+                            SlotStatus::Confirmed => {
                                 slot_messages.confirmed = true;
                             },
-                            CommitmentLevel::Finalized => {
+                            SlotStatus::Finalized => {
                                 slot_messages.finalized = true;
                             },
                             _ => {}
@@ -634,7 +712,7 @@ impl GrpcService {
                     match &message {
                         Message::BlockMeta(msg) => {
                             if slot_messages.block_meta.is_some() {
-                                metrics::update_invalid_blocks("unexpected message: BlockMeta (duplicate)");
+                                metrics::update_invalid_blocks("unexpected message: BlockMeta (duplicate)".to_string());
                             }
                             slot_messages.block_meta = Some(Arc::clone(msg));
                             sealed_block_msg = slot_messages.try_seal(&mut msgid_gen);
@@ -643,19 +721,8 @@ impl GrpcService {
                             slot_messages.transactions.push(Arc::clone(&msg.transaction));
                             sealed_block_msg = slot_messages.try_seal(&mut msgid_gen);
                         }
-                        // Dedup accounts by max write_version
+                        // No special handling needed anymore - accounts will be processed in order received
                         Message::Account(msg) => {
-                            let write_version = msg.account.write_version;
-                            let msg_index = slot_messages.messages.len() - 1;
-                            if let Some(entry) = slot_messages.accounts_dedup.get_mut(&msg.account.pubkey) {
-                                if entry.0 < write_version {
-                                    // We can replace the message, but in this case we will lose the order
-                                    slot_messages.messages[entry.1] = None;
-                                    *entry = (write_version, msg_index);
-                                }
-                            } else {
-                                slot_messages.accounts_dedup.insert(msg.account.pubkey, (write_version, msg_index));
-                            }
                         }
                         Message::Entry(msg) => {
                             slot_messages.entries.push(Arc::clone(msg));
@@ -685,12 +752,12 @@ impl GrpcService {
                             .and_then(|entry| entry.parent_slot)
                             .map(|parent| (parent, messages.get_mut(&parent)))
                         {
-                            if (status == CommitmentLevel::Confirmed && !entry.confirmed) ||
-                                (status == CommitmentLevel::Finalized && !entry.finalized)
+                            if (status == SlotStatus::Confirmed && !entry.confirmed) ||
+                                (status == SlotStatus::Finalized && !entry.finalized)
                             {
-                                if status == CommitmentLevel::Confirmed {
+                                if status == SlotStatus::Confirmed {
                                     entry.confirmed = true;
-                                } else if status == CommitmentLevel::Finalized {
+                                } else if status == SlotStatus::Finalized {
                                     entry.finalized = true;
                                 }
 
@@ -711,10 +778,10 @@ impl GrpcService {
                     for message in messages_vec.into_iter().rev() {
                         if let Message::Slot(slot) = &message.1 {
                             let (mut confirmed_messages, mut finalized_messages) = match slot.status {
-                                CommitmentLevel::Processed | CommitmentLevel::FirstShredReceived | CommitmentLevel::Completed | CommitmentLevel::CreatedBank | CommitmentLevel::Dead => {
+                                SlotStatus::Processed | SlotStatus::FirstShredReceived | SlotStatus::Completed | SlotStatus::CreatedBank | SlotStatus::Dead => {
                                     (Vec::with_capacity(1), Vec::with_capacity(1))
                                 }
-                                CommitmentLevel::Confirmed => {
+                                SlotStatus::Confirmed => {
                                     if let Some(slot_messages) = messages.get_mut(&slot.slot) {
                                         if !slot_messages.sealed {
                                             slot_messages.confirmed_at = Some(slot_messages.messages.len());
@@ -727,7 +794,7 @@ impl GrpcService {
                                         .unwrap_or_default();
                                     (vec, Vec::with_capacity(1))
                                 }
-                                CommitmentLevel::Finalized => {
+                                SlotStatus::Finalized => {
                                     if let Some(slot_messages) = messages.get_mut(&slot.slot) {
                                         if !slot_messages.sealed {
                                             slot_messages.finalized_at = Some(slot_messages.messages.len());
@@ -821,13 +888,13 @@ impl GrpcService {
                     let mut replayed_messages = Vec::with_capacity(32_768);
                     for (slot, messages) in messages.iter() {
                         if *slot >= replay_slot {
-                            replayed_messages.extend_from_slice(&messages.messages_slots);
                             if commitment == CommitmentLevel::Processed
                                 || (commitment == CommitmentLevel::Finalized && messages.finalized)
                                 || (commitment == CommitmentLevel::Confirmed && messages.confirmed)
                             {
                                 replayed_messages.extend(messages.messages.iter().filter_map(|v| v.clone()));
                             }
+                            replayed_messages.extend_from_slice(&messages.messages_slots);
                         }
                     }
                     let _ = tx.send(ReplayedResponse::Messages(replayed_messages));
@@ -893,14 +960,6 @@ impl GrpcService {
 
                         match message {
                             Some(Some((from_slot, filter_new))) => {
-                                if let Some(msg) = filter_new.get_pong_msg() {
-                                    if stream_tx.send(Ok(msg)).await.is_err() {
-                                        error!("client #{id}: stream closed");
-                                        break 'outer;
-                                    }
-                                    continue;
-                                }
-
                                 metrics::update_subscriptions(&endpoint, Some(&filter), Some(&filter_new));
                                 filter = filter_new;
                                 DebugClientMessage::maybe_send(&debug_client_tx, || DebugClientMessage::UpdateFilter { id, filter: Box::new(filter.clone()) });
@@ -950,12 +1009,15 @@ impl GrpcService {
                                     for (_msgid, message) in messages.iter() {
                                         for message in filter.get_updates(message, Some(commitment)) {
                                             match stream_tx.send(Ok(message)).await {
-                                                Ok(()) => {}
+                                                Ok(()) => {
+                                                }
                                                 Err(mpsc::error::SendError(_)) => {
                                                     error!("client #{id}: stream closed");
                                                     break 'outer;
                                                 }
                                             }
+
+                                            metrics::message_queue_size_dec();
                                         }
                                     }
                                 }
@@ -984,10 +1046,18 @@ impl GrpcService {
                         };
 
                         if commitment == filter.get_commitment_level() {
+                            for (_, message) in messages.iter() {
+                                record_message_latency(message, "received_message_for_filtering");
+                            }
                             for (_msgid, message) in messages.iter() {
+                                let created_at = message.created_at();
+                                let message_type = message.type_name();
                                 for message in filter.get_updates(message, Some(commitment)) {
+                                    record_message_latency_helper(created_at, "filtered_message", message_type);
                                     match stream_tx.try_send(Ok(message)) {
-                                        Ok(()) => {}
+                                        Ok(()) => {
+                                            record_message_latency_helper(created_at, "sent_message_after_filtering", message_type);
+                                        }
                                         Err(mpsc::error::TrySendError::Full(_)) => {
                                             error!("client #{id}: lagged to send an update");
                                             tokio::spawn(async move {
@@ -1087,14 +1157,93 @@ impl GrpcService {
     }
 }
 
-#[tonic::async_trait]
-impl Geyser for GrpcService {
-    type SubscribeStream = ReceiverStream<TonicResult<FilteredUpdate>>;
+pub struct ReceiverStreamWithMetrics {
+    inner: mpsc::Receiver<TonicResult<FilteredUpdate>>,
+}
 
-    async fn subscribe(
+impl Stream for ReceiverStreamWithMetrics {
+    type Item = TonicResult<FilteredUpdate>;
+
+    fn poll_next(
+        self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> Poll<Option<Self::Item>> {
+        let result = Pin::new(&mut self.get_mut().inner).poll_recv(cx);
+        if let Poll::Ready(Some(Ok(message))) = &result {
+            let created_at = message.created_at;
+            let message_type = message.message.type_name();
+            record_message_latency_helper(created_at, "received_message_for_sending", message_type);
+        }
+        result
+    }
+}
+
+pub struct ReceiverStreamWithMetricsBatch {
+    inner: ReceiverStreamWithMetrics,
+    batch_duration: Duration,
+}
+
+impl ReceiverStreamWithMetricsBatch {
+    pub fn new(inner: ReceiverStreamWithMetrics, batch_duration: Duration) -> Self {
+        Self {
+            inner,
+            batch_duration,
+        }
+    }
+}
+
+impl Stream for ReceiverStreamWithMetricsBatch {
+    type Item = TonicResult<FilteredUpdateBatch>;
+
+    fn poll_next(
+        self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> Poll<Option<Self::Item>> {
+        let this = self.get_mut();
+
+        let batch_start = Instant::now();
+        let mut batch = Vec::new();
+
+        // Get next item from inner stream
+        loop {
+            match Pin::new(&mut this.inner).poll_next(cx) {
+                Poll::Ready(Some(Ok(update))) => {
+                    // Convert single update to batch
+                    let bytes = update.encode_to_vec();
+                    batch.push(bytes);
+                    if Instant::now().duration_since(batch_start) > this.batch_duration {
+                        let batch = FilteredUpdateBatch {
+                            updates: batch.clone(),
+                        };
+                        return Poll::Ready(Some(Ok(batch)));
+                    }
+                }
+                Poll::Ready(Some(Err(e))) => {
+                    return Poll::Ready(Some(Err(e)));
+                }
+                Poll::Ready(None) => {
+                    return Poll::Ready(None);
+                }
+                Poll::Pending => {
+                    if batch.len() > 0 {
+                        let batch = FilteredUpdateBatch {
+                            updates: batch.clone(),
+                        };
+                        return Poll::Ready(Some(Ok(batch)));
+                    } else {
+                        return Poll::Pending;
+                    }
+                }
+            }
+        }
+    }
+}
+
+impl GrpcService {
+    async fn subscribe_helper(
         &self,
         mut request: Request<Streaming<SubscribeRequest>>,
-    ) -> TonicResult<Response<Self::SubscribeStream>> {
+    ) -> TonicResult<ReceiverStreamWithMetrics> {
         let id = self.subscribe_id.fetch_add(1, Ordering::Relaxed);
 
         let x_request_snapshot = request.metadata().contains_key("x-request-snapshot");
@@ -1165,9 +1314,20 @@ impl Geyser for GrpcService {
                             filter_names.try_clean();
 
                             if let Err(error) = match Filter::new(&request, &config_filter_limits, &mut filter_names) {
-                                Ok(filter) => match incoming_client_tx.send(Some((request.from_slot ,filter))) {
-                                    Ok(()) => Ok(()),
-                                    Err(error) => Err(error.to_string()),
+                                Ok(filter) => {
+                                    if let Some(msg) = filter.get_pong_msg() {
+                                        if incoming_stream_tx.send(Ok(msg)).await.is_err() {
+                                            error!("client #{id}: stream closed");
+                                            let _ = incoming_client_tx.send(None);
+                                            break;
+                                        }
+                                        continue;
+                                    }
+
+                                    match incoming_client_tx.send(Some((request.from_slot, filter))) {
+                                        Ok(()) => Ok(()),
+                                        Err(error) => Err(error.to_string()),
+                                    }
                                 },
                                 Err(error) => Err(error.to_string()),
                             } {
@@ -1206,7 +1366,33 @@ impl Geyser for GrpcService {
             },
         ));
 
-        Ok(Response::new(ReceiverStream::new(stream_rx)))
+        Ok(ReceiverStreamWithMetrics { inner: stream_rx })
+    }
+}
+
+#[tonic::async_trait]
+impl Geyser for GrpcService {
+    type SubscribeStream = ReceiverStreamWithMetrics;
+    type SubscribeBatchStream = ReceiverStreamWithMetricsBatch;
+
+    async fn subscribe(
+        &self,
+        request: Request<Streaming<SubscribeRequest>>,
+    ) -> TonicResult<Response<Self::SubscribeStream>> {
+        let subscribe_result = self.subscribe_helper(request).await?;
+        Ok(Response::new(subscribe_result))
+    }
+
+    async fn subscribe_batch(
+        &self,
+        request: Request<Streaming<SubscribeRequest>>,
+    ) -> TonicResult<Response<Self::SubscribeBatchStream>> {
+        let subscribe_result = self.subscribe_helper(request).await?;
+
+        Ok(Response::new(ReceiverStreamWithMetricsBatch::new(
+            subscribe_result,
+            Duration::from_millis(1),
+        )))
     }
 
     async fn ping(&self, request: Request<PingRequest>) -> Result<Response<PongResponse>, Status> {

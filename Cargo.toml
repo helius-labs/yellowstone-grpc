@@ -1,12 +1,9 @@
 [workspace]
 resolver = "2"
 members = [
-    "yellowstone-grpc-client", # 4.1.0+solana.2.1.9
-    "yellowstone-grpc-geyser", # 4.2.2+solana.2.1.9
-    "yellowstone-grpc-proto",  # 4.1.1+solana.2.1.9
-]
-exclude = [
-    "yellowstone-grpc-client-nodejs/solana-encoding-wasm", # 3.0.0
+    "yellowstone-grpc-client", # 6.0.0
+    "yellowstone-grpc-geyser", # 6.0.0
+    "yellowstone-grpc-proto",  # 6.0.0
 ]
 
 [workspace.package]
@@ -19,8 +16,8 @@ keywords = ["solana"]
 publish = false
 
 [workspace.dependencies]
-affinity = "0.1.2"
-agave-geyser-plugin-interface = { git = "https://github.com/helius-labs/agave", branch = "master-2.3" }
+affinity-linux = "1.0.1"
+agave-geyser-plugin-interface = { git = "https://github.com/helius-labs/agave", branch = "master-2.3-latest" }
 anyhow = "1.0.62"
 backoff = "0.4.0"
 base64 = "0.22.1"
@@ -45,14 +42,14 @@ hyper-util = "0.1.7"
 indicatif = "0.17.9"
 lazy_static = "1.4.0"
 local-ip-address = "0.6.1"
-log = "0.4.27"
+log = "0.4.17"
 maplit = "1.0.2"
 prometheus = "0.13.2"
 prost = "0.13.1"
 prost-types = "0.13.3"
 prost_011 = { package = "prost", version = "0.11.9" }
 protobuf-src = "1.1.0"
-serde = "1.0.217"
+serde = "1.0.145"
 serde_json = "1.0.86"
 solana-account-decoder = { git = "https://github.com/helius-labs/agave", branch = "master-2.3" }
 solana-logger = "=2.3.0"
@@ -69,8 +66,11 @@ tonic = "0.12.1"
 tonic-build = "0.12.1"
 tonic-health = "0.12.1"
 vergen = "9.0.0"
-yellowstone-grpc-client = { path = "yellowstone-grpc-client", version = "2.3.0" }
-yellowstone-grpc-proto = { path = "yellowstone-grpc-proto", version = "2.3.0", default-features = false }
+metrics = "0.24.2"
+metrics-exporter-statsd = "0.9.0"
+yellowstone-grpc-client = { path = "yellowstone-grpc-client", version = "6.0.0" }
+yellowstone-grpc-proto = { path = "yellowstone-grpc-proto", version = "6.0.0", default-features = false }
+lz4_flex = "0.11.3"
 
 [workspace.lints.clippy]
 clone_on_ref_ptr = "deny"
@@ -80,6 +80,7 @@ trivially_copy_pass_by_ref = "deny"
 [profile.release]
 lto = true
 codegen-units = 1
+
 
 [patch.crates-io]
 # solana-signature = "=2.3.0"
