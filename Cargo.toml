@@ -118,4 +118,4 @@ codegen-units = 1
 # solana-stable-layout = "=2.3.0"
 # solana-sysvar-id = "=2.3.0"
 # solana-transaction-error = "=2.3.0"
-solana-zk-sdk = { git = "https://github.com/helius-labs/agave", branch = "master-2.3-latest" }
+# solana-zk-sdk = { git = "https://github.com/helius-labs/agave", branch = "master-2.3-latest" }
