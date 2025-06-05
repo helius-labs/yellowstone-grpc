@@ -188,6 +188,7 @@ pub mod convert_to {
             return_data: return_data.as_ref().map(create_return_data),
             return_data_none: return_data.is_none(),
             compute_units_consumed: *compute_units_consumed,
+            cost_units: *cost_units,
         }
     }
 
