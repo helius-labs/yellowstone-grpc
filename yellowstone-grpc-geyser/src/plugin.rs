@@ -4,13 +4,11 @@ use {
         grpc::GrpcService,
         metrics::{self, PrometheusService},
     },
-    ::metrics::set_global_recorder,
     agave_geyser_plugin_interface::geyser_plugin_interface::{
         GeyserPlugin, GeyserPluginError, ReplicaAccountInfoVersions, ReplicaBlockInfoVersions,
         ReplicaEntryInfoVersions, ReplicaTransactionInfoVersions, Result as PluginResult,
         SlotStatus,
     },
-    metrics_exporter_statsd::StatsdBuilder,
     std::{
         concat, env,
         sync::{

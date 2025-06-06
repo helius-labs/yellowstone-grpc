@@ -149,7 +149,7 @@ pub mod convert_to {
             loaded_addresses,
             return_data,
             compute_units_consumed,
-            cost_units,
+            cost_units: _,
         } = meta;
         let err = create_transaction_error(status);
         let inner_instructions_none = inner_instructions.is_none();

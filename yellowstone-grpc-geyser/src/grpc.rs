@@ -1,5 +1,6 @@
 use lz4_flex::block::compress_prepend_size;
 use yellowstone_grpc_proto::plugin::message::MessageAccountInfo;
+use yellowstone_grpc_proto::prost::Message as ProstMessage;
 use {
     crate::{
         config::{ConfigGrpc, ConfigTokio},
@@ -8,15 +9,11 @@ use {
         },
         version::GrpcVersionInfo,
     },
-    ::metrics::histogram,
     anyhow::Context,
-    futures::{pin_mut, Stream},
+    futures::Stream,
     log::{error, info},
     prost_types::Timestamp,
-    solana_sdk::{
-        clock::{Slot, MAX_RECENT_BLOCKHASHES},
-        pubkey::Pubkey,
-    },
+    solana_sdk::clock::{Slot, MAX_RECENT_BLOCKHASHES},
     std::{
         collections::{BTreeMap, HashMap},
         pin::Pin,
@@ -34,7 +31,6 @@ use {
         task::spawn_blocking,
         time::{sleep, Duration, Instant},
     },
-    tokio_stream::wrappers::ReceiverStream,
     tonic::{
         service::interceptor::interceptor,
         transport::{
@@ -66,7 +62,6 @@ use {
         },
     },
 };
-use yellowstone_grpc_proto::prost::Message as ProstMessage;
 
 #[derive(Debug)]
 struct BlockhashStatus {
@@ -722,8 +717,7 @@ impl GrpcService {
                             sealed_block_msg = slot_messages.try_seal(&mut msgid_gen);
                         }
                         // No special handling needed anymore - accounts will be processed in order received
-                        Message::Account(msg) => {
-                        }
+                        Message::Account(_) => {}
                         Message::Entry(msg) => {
                             slot_messages.entries.push(Arc::clone(msg));
                             sealed_block_msg = slot_messages.try_seal(&mut msgid_gen);
