@@ -1,9 +1,12 @@
 [workspace]
 resolver = "2"
 members = [
-    "yellowstone-grpc-client", # 6.0.0
-    "yellowstone-grpc-geyser", # 6.0.0
-    "yellowstone-grpc-proto",  # 6.0.0
+    "yellowstone-grpc-client", # 4.1.0+solana.2.1.9
+    "yellowstone-grpc-geyser", # 4.2.2+solana.2.1.9
+    "yellowstone-grpc-proto",  # 4.1.1+solana.2.1.9
+]
+exclude = [
+    "yellowstone-grpc-client-nodejs/solana-encoding-wasm", # 3.0.0
 ]
 
 [workspace.package]
@@ -17,7 +20,7 @@ publish = false
 
 [workspace.dependencies]
 affinity-linux = "1.0.1"
-agave-geyser-plugin-interface = { git = "https://github.com/helius-labs/agave", branch = "master-2.3-latest" }
+agave-geyser-plugin-interface = { git = "https://github.com/helius-labs/agave", branch = "master-2.3" }
 anyhow = "1.0.62"
 backoff = "0.4.0"
 base64 = "0.22.1"
@@ -42,23 +45,23 @@ hyper-util = "0.1.7"
 indicatif = "0.17.9"
 lazy_static = "1.4.0"
 local-ip-address = "0.6.1"
-log = "0.4.17"
+log = "0.4.27"
 maplit = "1.0.2"
 prometheus = "0.13.2"
 prost = "0.13.1"
 prost-types = "0.13.3"
 prost_011 = { package = "prost", version = "0.11.9" }
 protobuf-src = "1.1.0"
-serde = "1.0.145"
+serde = "1.0.217"
 serde_json = "1.0.86"
-solana-account-decoder = { git = "https://github.com/helius-labs/agave", branch = "master-2.3-latest" }
-solana-logger = { git = "https://github.com/helius-labs/solana-sdk", branch = "master-2.3-latest" }
-solana-sdk = { git = "https://github.com/helius-labs/solana-sdk", branch = "master-2.3-latest" }
-solana-storage-proto = { git = "https://github.com/helius-labs/agave", branch = "master-2.3-latest" }
-solana-transaction-status = { git = "https://github.com/helius-labs/agave", branch = "master-2.3-latest" }
-solana-transaction-context = { git = "https://github.com/helius-labs/agave", branch = "master-2.3-latest" }
+solana-account-decoder = { git = "https://github.com/helius-labs/agave", branch = "master-2.3" }
+solana-logger = "=2.3.0"
+solana-sdk = "=2.2.2"
+solana-storage-proto = { git = "https://github.com/helius-labs/agave", branch = "master-2.3" }
+solana-transaction-status = { git = "https://github.com/helius-labs/agave", branch = "master-2.3" }
+solana-transaction-context = { git = "https://github.com/helius-labs/agave", branch = "master-2.3" }
+spl-token-2022 = "7.0.0"
 smallvec = "1.13.2"
-spl-token-2022 = "6.0.0"
 thiserror = "1.0.63"
 tokio = "1.21.2"
 tokio-stream = "0.1.11"
@@ -79,35 +82,3 @@ trivially_copy_pass_by_ref = "deny"
 [profile.release]
 lto = true
 codegen-units = 1
-
-
-[patch.crates-io]
-solana-account-decoder = { git = "https://github.com/helius-labs/agave", branch = "master-2.3-latest" }
-solana-sdk = { git = "https://github.com/helius-labs/solana-sdk", branch = "master-2.3-latest" }
-solana-pubkey = { git = "https://github.com/helius-labs/solana-sdk", branch = "master-2.3-latest" }
-solana-instruction = { git = "https://github.com/helius-labs/solana-sdk", branch = "master-2.3-latest" }
-solana-message = { git = "https://github.com/helius-labs/solana-sdk", branch = "master-2.3-latest" }
-solana-sanitize = { git = "https://github.com/helius-labs/solana-sdk", branch = "master-2.3-latest" }
-solana-transaction = { git = "https://github.com/helius-labs/solana-sdk", branch = "master-2.3-latest" }
-solana-sysvar = { git = "https://github.com/helius-labs/solana-sdk", branch = "master-2.3-latest" }
-solana-sysvar-id = { git = "https://github.com/helius-labs/solana-sdk", branch = "master-2.3-latest" }
-solana-rent = { git = "https://github.com/helius-labs/solana-sdk", branch = "master-2.3-latest" }
-solana-program-error = { git = "https://github.com/helius-labs/solana-sdk", branch = "master-2.3-latest" }
-solana-decode-error = { git = "https://github.com/helius-labs/solana-sdk", branch = "master-2.3-latest" }
-solana-program = { git = "https://github.com/helius-labs/solana-sdk", branch = "master-2.3-latest" }
-solana-account-info = { git = "https://github.com/helius-labs/solana-sdk", branch = "master-2.3-latest" }
-solana-clock = { git = "https://github.com/helius-labs/solana-sdk", branch = "master-2.3-latest" }
-solana-epoch-schedule = { git = "https://github.com/helius-labs/solana-sdk", branch = "master-2.3-latest" }
-solana-hash = { git = "https://github.com/helius-labs/solana-sdk", branch = "master-2.3-latest" }
-solana-logger = { git = "https://github.com/helius-labs/solana-sdk", branch = "master-2.3-latest" }
-solana-sdk-ids = { git = "https://github.com/helius-labs/solana-sdk", branch = "master-2.3-latest" }
-solana-sha256-hasher = { git = "https://github.com/helius-labs/solana-sdk", branch = "master-2.3-latest" }
-solana-signature = { git = "https://github.com/helius-labs/solana-sdk", branch = "master-2.3-latest" }
-solana-program-option = { git = "https://github.com/helius-labs/solana-sdk", branch = "master-2.3-latest" }
-solana-fee-calculator = { git = "https://github.com/helius-labs/solana-sdk", branch = "master-2.3-latest" }
-solana-slot-hashes = { git = "https://github.com/helius-labs/solana-sdk", branch = "master-2.3-latest" }
-solana-slot-history = { git = "https://github.com/helius-labs/solana-sdk", branch = "master-2.3-latest" }
-solana-transaction-error = { git = "https://github.com/helius-labs/solana-sdk", branch = "master-2.3-latest" }
-solana-storage-proto = { git = "https://github.com/helius-labs/agave", branch = "master-2.3-latest" }
-solana-transaction-context = { git = "https://github.com/helius-labs/agave", branch = "master-2.3-latest" }
-solana-svm-feature-set = { git = "https://github.com/helius-labs/agave", branch = "master-2.3-latest" }
