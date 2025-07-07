@@ -10,8 +10,7 @@ use {
         solana::storage::confirmed_block,
     },
     agave_geyser_plugin_interface::geyser_plugin_interface::{
-        ReplicaAccountInfoV3, ReplicaBlockInfoV4, ReplicaEntryInfoV2, ReplicaTransactionInfoV2,
-        SlotStatus as GeyserSlotStatus,
+        ReplicaAccountInfoV3, ReplicaBlockInfoV4, ReplicaEntryInfoV2, ReplicaTransactionInfoV2, ReplicaTransactionInfoV3, SlotStatus as GeyserSlotStatus
     },
     prost_types::Timestamp,
     solana_sdk::{
@@ -293,6 +292,25 @@ impl MessageTransactionInfo {
         }
     }
 
+    pub fn from_geyser_v3(info: &ReplicaTransactionInfoV3<'_>) -> Self {
+        let account_keys = info
+            .transaction
+            .message
+            .static_account_keys()
+            .iter()
+            .copied()
+            .collect();
+
+        Self {
+            signature: *info.signature,
+            is_vote: info.is_vote,
+            transaction: convert_to::create_transaction_from_versioned(info.transaction),
+            meta: convert_to::create_transaction_meta(info.transaction_status_meta),
+            index: info.index,
+            account_keys,
+        }
+    }
+
     pub fn from_update_oneof(msg: SubscribeUpdateTransactionInfo) -> FromUpdateOneofResult<Self> {
         Ok(Self {
             signature: Signature::try_from(msg.signature.as_slice())
@@ -350,6 +368,14 @@ impl MessageTransaction {
     pub fn from_geyser(info: &ReplicaTransactionInfoV2<'_>, slot: Slot) -> Self {
         Self {
             transaction: Arc::new(MessageTransactionInfo::from_geyser(info)),
+            slot,
+            created_at: Timestamp::from(SystemTime::now()),
+        }
+    }
+
+    pub fn from_geyser_v3(info: &ReplicaTransactionInfoV3<'_>, slot: Slot) -> Self {
+        Self {
+            transaction: Arc::new(MessageTransactionInfo::from_geyser_v3(info)),
             slot,
             created_at: Timestamp::from(SystemTime::now()),
         }

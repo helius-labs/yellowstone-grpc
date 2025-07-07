@@ -13,15 +13,14 @@ use {
     },
     log::{error, info},
     prometheus::{
-        HistogramOpts, HistogramVec, IntCounterVec, IntGauge, IntGaugeVec, Opts, Registry,
-        TextEncoder,
+        IntCounterVec, Opts, Registry, TextEncoder,
     },
     solana_sdk::clock::Slot,
     std::{
         collections::{hash_map::Entry as HashMapEntry, HashMap},
         convert::Infallible,
         sync::{
-            atomic::{AtomicI64, AtomicUsize, Ordering},
+            atomic::{AtomicI64, Ordering},
             Arc, Once,
         },
     },

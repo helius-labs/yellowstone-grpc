@@ -49,11 +49,11 @@ pub mod convert_to {
             instruction::CompiledInstruction,
             message::{
                 v0::{LoadedMessage, MessageAddressTableLookup},
-                LegacyMessage, MessageHeader, SanitizedMessage,
+                LegacyMessage, MessageHeader, SanitizedMessage, VersionedMessage,
             },
             pubkey::Pubkey,
             signature::Signature,
-            transaction::{SanitizedTransaction, TransactionError},
+            transaction::{SanitizedTransaction, TransactionError, VersionedTransaction},
         },
         solana_transaction_context::TransactionReturnData,
         solana_transaction_status::{
@@ -70,6 +70,17 @@ pub mod convert_to {
                 .map(|signature| <Signature as AsRef<[u8]>>::as_ref(signature).into())
                 .collect(),
             message: Some(create_message(tx.message())),
+        }
+    }
+
+    pub fn create_transaction_from_versioned(tx: &VersionedTransaction) -> proto::Transaction {
+        proto::Transaction {
+            signatures: tx
+                .signatures
+                .iter()
+                .map(|signature| <Signature as AsRef<[u8]>>::as_ref(signature).into())
+                .collect(),
+            message: Some(create_message_from_versioned(&tx.message)),
         }
     }
 
@@ -91,6 +102,17 @@ pub mod convert_to {
                 versioned: true,
                 address_table_lookups: create_lookups(&message.address_table_lookups),
             },
+        }
+    }
+
+    pub fn create_message_from_versioned(message: &VersionedMessage) -> proto::Message {
+        proto::Message {
+            header: Some(create_header(&message.header())),
+            account_keys: create_pubkeys(&message.static_account_keys()),
+            recent_blockhash: message.recent_blockhash().to_bytes().into(),
+            instructions: create_instructions(&message.instructions()),
+            versioned: true,
+            address_table_lookups: create_lookups(&message.address_table_lookups().unwrap_or_default()),
         }
     }
 
