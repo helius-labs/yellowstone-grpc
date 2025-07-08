@@ -13,8 +13,7 @@ use {
     },
     log::{error, info},
     prometheus::{
-        HistogramOpts, HistogramVec, IntCounterVec, IntGauge, IntGaugeVec, Opts, Registry,
-        TextEncoder,
+        IntCounterVec, Opts, Registry, TextEncoder,
     },
     prost_types::Timestamp,
     solana_sdk::clock::Slot,
@@ -22,7 +21,7 @@ use {
         collections::{hash_map::Entry as HashMapEntry, HashMap},
         convert::Infallible,
         sync::{
-            atomic::{AtomicI64, AtomicUsize, Ordering},
+            atomic::{AtomicI64, Ordering},
             Arc, Once,
         },
     },

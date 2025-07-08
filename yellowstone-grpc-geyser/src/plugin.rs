@@ -4,13 +4,11 @@ use {
         grpc::GrpcService,
         metrics::{self, PrometheusService},
     },
-    ::metrics::set_global_recorder,
     agave_geyser_plugin_interface::geyser_plugin_interface::{
         GeyserPlugin, GeyserPluginError, ReplicaAccountInfoVersions, ReplicaBlockInfoVersions,
         ReplicaEntryInfoVersions, ReplicaTransactionInfoVersions, Result as PluginResult,
         SlotStatus,
     },
-    metrics_exporter_statsd::StatsdBuilder,
     std::{
         concat, env,
         sync::{
@@ -220,11 +218,15 @@ impl GeyserPlugin for Plugin {
                 ReplicaTransactionInfoVersions::V0_0_1(_info) => {
                     unreachable!("ReplicaAccountInfoVersions::V0_0_1 is not supported")
                 }
-                ReplicaTransactionInfoVersions::V0_0_2(info) => info,
+                ReplicaTransactionInfoVersions::V0_0_2(info) => {
+                    MessageTransaction::from_geyser(info, slot)
+                }
+                ReplicaTransactionInfoVersions::V0_0_3(info) => {
+                    MessageTransaction::from_geyser_v3(info, slot)
+                }
             };
 
-            let message = Message::Transaction(MessageTransaction::from_geyser(transaction, slot));
-            inner.send_message(message);
+            inner.send_message(Message::Transaction(transaction));
 
             Ok(())
         })
