@@ -35,6 +35,7 @@ use {
         message::{time_since_timestamp, Message, SlotStatus},
     },
 };
+use prometheus::{HistogramOpts, HistogramVec};
 
 lazy_static::lazy_static! {
     pub static ref REGISTRY: Registry = Registry::new();
