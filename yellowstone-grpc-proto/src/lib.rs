@@ -106,12 +106,16 @@ pub mod convert_to {
     }
 
     pub fn create_message_from_versioned(message: &VersionedMessage) -> proto::Message {
+        let versioned = match message {
+            VersionedMessage::Legacy(_) => false,
+            VersionedMessage::V0(_) => true,
+        };
         proto::Message {
             header: Some(create_header(&message.header())),
             account_keys: create_pubkeys(&message.static_account_keys()),
             recent_blockhash: message.recent_blockhash().to_bytes().into(),
             instructions: create_instructions(&message.instructions()),
-            versioned: true,
+            versioned,
             address_table_lookups: create_lookups(&message.address_table_lookups().unwrap_or_default()),
         }
     }
