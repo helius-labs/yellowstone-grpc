@@ -293,13 +293,21 @@ impl MessageTransactionInfo {
     }
 
     pub fn from_geyser_v3(info: &ReplicaTransactionInfoV3<'_>) -> Self {
-        let account_keys = info
+        let mut account_keys: HashSet<Pubkey> = info
             .transaction
             .message
             .static_account_keys()
             .iter()
             .copied()
             .collect();
+
+        let loaded_addresses = info.transaction_status_meta.loaded_addresses.clone();
+        for address in loaded_addresses.writable {
+            account_keys.insert(address);
+        }
+        for address in loaded_addresses.readonly {
+            account_keys.insert(address);
+        }
 
         Self {
             signature: *info.signature,
