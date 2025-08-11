@@ -76,7 +76,7 @@ dependencies = [
 [[package]]
 name = "agave-feature-set"
 version = "2.3.7"
-source = "git+https://github.com/helius-labs/agave?branch=v2.3.7-11-08-25#14bf3f162d6976064c079753c10e4e17542ef4cd"
+source = "git+https://github.com/helius-labs/agave?branch=master-2.3.7-11-08-25#14bf3f162d6976064c079753c10e4e17542ef4cd"
 dependencies = [
  "ahash",
  "solana-epoch-schedule",
@@ -89,7 +89,7 @@ dependencies = [
 [[package]]
 name = "agave-geyser-plugin-interface"
 version = "2.3.7"
-source = "git+https://github.com/helius-labs/agave?branch=v2.3.7-11-08-25#14bf3f162d6976064c079753c10e4e17542ef4cd"
+source = "git+https://github.com/helius-labs/agave?branch=master-2.3.7-11-08-25#14bf3f162d6976064c079753c10e4e17542ef4cd"
 dependencies = [
  "log",
  "solana-clock",
@@ -102,7 +102,7 @@ dependencies = [
 [[package]]
 name = "agave-reserved-account-keys"
 version = "2.3.7"
-source = "git+https://github.com/helius-labs/agave?branch=v2.3.7-11-08-25#14bf3f162d6976064c079753c10e4e17542ef4cd"
+source = "git+https://github.com/helius-labs/agave?branch=master-2.3.7-11-08-25#14bf3f162d6976064c079753c10e4e17542ef4cd"
 dependencies = [
  "agave-feature-set",
  "solana-pubkey",
@@ -3164,7 +3164,7 @@ dependencies = [
 [[package]]
 name = "solana-account-decoder"
 version = "2.3.7"
-source = "git+https://github.com/helius-labs/agave?branch=v2.3.7-11-08-25#14bf3f162d6976064c079753c10e4e17542ef4cd"
+source = "git+https://github.com/helius-labs/agave?branch=master-2.3.7-11-08-25#14bf3f162d6976064c079753c10e4e17542ef4cd"
 dependencies = [
  "Inflector",
  "base64 0.22.1",
@@ -3206,7 +3206,7 @@ dependencies = [
 [[package]]
 name = "solana-account-decoder-client-types"
 version = "2.3.7"
-source = "git+https://github.com/helius-labs/agave?branch=v2.3.7-11-08-25#14bf3f162d6976064c079753c10e4e17542ef4cd"
+source = "git+https://github.com/helius-labs/agave?branch=master-2.3.7-11-08-25#14bf3f162d6976064c079753c10e4e17542ef4cd"
 dependencies = [
  "base64 0.22.1",
  "bs58",
@@ -4497,7 +4497,7 @@ dependencies = [
 [[package]]
 name = "solana-storage-proto"
 version = "2.3.7"
-source = "git+https://github.com/helius-labs/agave?branch=v2.3.7-11-08-25#14bf3f162d6976064c079753c10e4e17542ef4cd"
+source = "git+https://github.com/helius-labs/agave?branch=master-2.3.7-11-08-25#14bf3f162d6976064c079753c10e4e17542ef4cd"
 dependencies = [
  "bincode",
  "bs58",
@@ -4521,7 +4521,7 @@ dependencies = [
 [[package]]
 name = "solana-svm-feature-set"
 version = "2.3.7"
-source = "git+https://github.com/helius-labs/agave?branch=v2.3.7-11-08-25#14bf3f162d6976064c079753c10e4e17542ef4cd"
+source = "git+https://github.com/helius-labs/agave?branch=master-2.3.7-11-08-25#14bf3f162d6976064c079753c10e4e17542ef4cd"
 
 [[package]]
 name = "solana-system-interface"
@@ -4654,7 +4654,7 @@ dependencies = [
 [[package]]
 name = "solana-transaction-context"
 version = "2.3.7"
-source = "git+https://github.com/helius-labs/agave?branch=v2.3.7-11-08-25#14bf3f162d6976064c079753c10e4e17542ef4cd"
+source = "git+https://github.com/helius-labs/agave?branch=master-2.3.7-11-08-25#14bf3f162d6976064c079753c10e4e17542ef4cd"
 dependencies = [
  "bincode",
  "serde",
@@ -4682,7 +4682,7 @@ dependencies = [
 [[package]]
 name = "solana-transaction-status"
 version = "2.3.7"
-source = "git+https://github.com/helius-labs/agave?branch=v2.3.7-11-08-25#14bf3f162d6976064c079753c10e4e17542ef4cd"
+source = "git+https://github.com/helius-labs/agave?branch=master-2.3.7-11-08-25#14bf3f162d6976064c079753c10e4e17542ef4cd"
 dependencies = [
  "Inflector",
  "agave-reserved-account-keys",
@@ -4725,7 +4725,7 @@ dependencies = [
 [[package]]
 name = "solana-transaction-status-client-types"
 version = "2.3.7"
-source = "git+https://github.com/helius-labs/agave?branch=v2.3.7-11-08-25#14bf3f162d6976064c079753c10e4e17542ef4cd"
+source = "git+https://github.com/helius-labs/agave?branch=master-2.3.7-11-08-25#14bf3f162d6976064c079753c10e4e17542ef4cd"
 dependencies = [
  "base64 0.22.1",
  "bincode",
