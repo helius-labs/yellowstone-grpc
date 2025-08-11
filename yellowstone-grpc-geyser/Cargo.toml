@@ -62,4 +62,4 @@ workspace = true
 
 [features]
 default = []
-statsd = []
+statsd = ["metrics-exporter-statsd", "metrics"]
