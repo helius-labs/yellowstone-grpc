@@ -21,6 +21,7 @@ base64 = { workspace = true, optional = true }
 bincode = { workspace = true, optional = true }
 bs58 = { workspace = true, optional = true }
 bytes = { workspace = true, optional = true }
+log = { workspace = true, optional = true }
 prost = { workspace = true }
 prost-types = { workspace = true }
 prost_011 = { workspace = true, optional = true }
@@ -60,6 +61,7 @@ plugin = [
     "dep:base64",
     "dep:bs58",
     "dep:bytes",
+    "dep:log",
     "dep:serde",
     "dep:smallvec",
     "dep:spl-token-2022",

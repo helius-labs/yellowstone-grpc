@@ -306,8 +306,10 @@ impl MessageTransactionInfo {
             .copied()
             .collect();
 
+
+
         // Convert pre_accounts_states to MessageAccountInfo
-        let pre_accounts_states = info
+        let pre_accounts_states: Vec<MessageAccountInfo> = info
             .pre_accounts_states
             .iter()
             .map(|(pubkey, account_data)| MessageAccountInfo {
@@ -323,7 +325,7 @@ impl MessageTransactionInfo {
             .collect();
 
         // Convert post_accounts_states to MessageAccountInfo
-        let post_accounts_states = info
+        let post_accounts_states: Vec<MessageAccountInfo> = info
             .post_accounts_states
             .iter()
             .map(|(pubkey, account_data)| MessageAccountInfo {
@@ -337,6 +339,8 @@ impl MessageTransactionInfo {
                 txn_signature: None, // Not available in pre/post states
             })
             .collect();
+
+
 
         Self {
             signature: *info.signature,

@@ -144,13 +144,14 @@ impl FilteredUpdate {
     fn as_subscribe_update_transaction(
         message: &MessageTransactionInfo,
     ) -> SubscribeUpdateTransactionInfo {
-        SubscribeUpdateTransactionInfo {
+        
+        let result = SubscribeUpdateTransactionInfo {
             signature: message.signature.as_ref().into(),
             is_vote: message.is_vote,
             transaction: Some(message.transaction.clone()),
             meta: Some(message.meta.clone()),
             index: message.index as u64,
-            pre_accounts_states: message
+                        pre_accounts_states: message
                 .pre_accounts_states
                 .iter()
                 .map(|account| SubscribeUpdateAccountInfo {
@@ -178,7 +179,9 @@ impl FilteredUpdate {
                     txn_signature: account.txn_signature.map(|s| s.as_ref().into()),
                 })
                 .collect(),
-        }
+        };
+        
+        result
     }
 
     fn as_subscribe_update_entry(message: &MessageEntry) -> SubscribeUpdateEntry {
