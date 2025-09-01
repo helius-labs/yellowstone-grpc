@@ -144,13 +144,44 @@ impl FilteredUpdate {
     fn as_subscribe_update_transaction(
         message: &MessageTransactionInfo,
     ) -> SubscribeUpdateTransactionInfo {
-        SubscribeUpdateTransactionInfo {
+        
+        let result = SubscribeUpdateTransactionInfo {
             signature: message.signature.as_ref().into(),
             is_vote: message.is_vote,
             transaction: Some(message.transaction.clone()),
             meta: Some(message.meta.clone()),
             index: message.index as u64,
-        }
+                        pre_accounts_states: message
+                .pre_accounts_states
+                .iter()
+                .map(|account| SubscribeUpdateAccountInfo {
+                    pubkey: account.pubkey.as_ref().into(),
+                    lamports: account.lamports,
+                    owner: account.owner.as_ref().into(),
+                    executable: account.executable,
+                    rent_epoch: account.rent_epoch,
+                    data: account.data.clone(),
+                    write_version: account.write_version,
+                    txn_signature: account.txn_signature.map(|s| s.as_ref().into()),
+                })
+                .collect(),
+            post_accounts_states: message
+                .post_accounts_states
+                .iter()
+                .map(|account| SubscribeUpdateAccountInfo {
+                    pubkey: account.pubkey.as_ref().into(),
+                    lamports: account.lamports,
+                    owner: account.owner.as_ref().into(),
+                    executable: account.executable,
+                    rent_epoch: account.rent_epoch,
+                    data: account.data.clone(),
+                    write_version: account.write_version,
+                    txn_signature: account.txn_signature.map(|s| s.as_ref().into()),
+                })
+                .collect(),
+        };
+        
+        result
     }
 
     fn as_subscribe_update_entry(message: &MessageEntry) -> SubscribeUpdateEntry {
@@ -282,6 +313,8 @@ impl FilteredUpdate {
                         },
                         index: msg.index as usize,
                         account_keys: HashSet::new(),
+                        pre_accounts_states: Vec::new(),
+                        post_accounts_states: Vec::new(),
                     }),
                     slot: msg.slot,
                 })
@@ -1175,6 +1208,8 @@ pub mod tests {
                             meta: convert_to::create_transaction_meta(&tx.meta),
                             index,
                             account_keys: HashSet::new(),
+                            pre_accounts_states: Vec::new(),
+                            post_accounts_states: Vec::new(),
                         }
                     })
                     .map(Arc::new)
