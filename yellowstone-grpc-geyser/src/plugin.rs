@@ -69,6 +69,8 @@ impl GeyserPlugin for Plugin {
 
         // Setup logger
         solana_logger::setup_with_default(&config.log.level);
+        
+
 
         // Create inner
         let mut builder = Builder::new_multi_thread();
@@ -132,6 +134,7 @@ impl GeyserPlugin for Plugin {
             grpc_shutdown,
             prometheus,
         });
+
 
         Ok(())
     }
@@ -213,6 +216,7 @@ impl GeyserPlugin for Plugin {
         transaction: ReplicaTransactionInfoVersions<'_>,
         slot: u64,
     ) -> PluginResult<()> {
+
         self.with_inner(|inner| {
             let transaction = match transaction {
                 ReplicaTransactionInfoVersions::V0_0_1(_info) => {
@@ -225,6 +229,7 @@ impl GeyserPlugin for Plugin {
                     MessageTransaction::from_geyser_v3(info, slot)
                 }
             };
+
 
             inner.send_message(Message::Transaction(transaction));
 

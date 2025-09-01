@@ -14,6 +14,7 @@ use {
     },
     prost_types::Timestamp,
     solana_sdk::{
+        account::ReadableAccount,
         clock::Slot,
         hash::{Hash, HASH_BYTES},
         pubkey::Pubkey,
@@ -270,6 +271,8 @@ pub struct MessageTransactionInfo {
     pub meta: confirmed_block::TransactionStatusMeta,
     pub index: usize,
     pub account_keys: HashSet<Pubkey>,
+    pub pre_accounts_states: Vec<MessageAccountInfo>,
+    pub post_accounts_states: Vec<MessageAccountInfo>,
 }
 
 impl MessageTransactionInfo {
@@ -289,6 +292,8 @@ impl MessageTransactionInfo {
             meta: convert_to::create_transaction_meta(info.transaction_status_meta),
             index: info.index,
             account_keys,
+            pre_accounts_states: Vec::new(),
+            post_accounts_states: Vec::new(),
         }
     }
 
@@ -301,6 +306,42 @@ impl MessageTransactionInfo {
             .copied()
             .collect();
 
+
+
+        // Convert pre_accounts_states to MessageAccountInfo
+        let pre_accounts_states: Vec<MessageAccountInfo> = info
+            .pre_accounts_states
+            .iter()
+            .map(|(pubkey, account_data)| MessageAccountInfo {
+                pubkey: *pubkey,
+                lamports: account_data.lamports(),
+                owner: *account_data.owner(),
+                executable: account_data.executable(),
+                rent_epoch: account_data.rent_epoch(),
+                data: account_data.data().to_vec(),
+                write_version: 0, // AccountSharedData doesn't have write_version
+                txn_signature: None, // Not available in pre/post states
+            })
+            .collect();
+
+        // Convert post_accounts_states to MessageAccountInfo
+        let post_accounts_states: Vec<MessageAccountInfo> = info
+            .post_accounts_states
+            .iter()
+            .map(|(pubkey, account_data)| MessageAccountInfo {
+                pubkey: *pubkey,
+                lamports: account_data.lamports(),
+                owner: *account_data.owner(),
+                executable: account_data.executable(),
+                rent_epoch: account_data.rent_epoch(),
+                data: account_data.data().to_vec(),
+                write_version: 0, // AccountSharedData doesn't have write_version
+                txn_signature: None, // Not available in pre/post states
+            })
+            .collect();
+
+
+
         Self {
             signature: *info.signature,
             is_vote: info.is_vote,
@@ -308,10 +349,24 @@ impl MessageTransactionInfo {
             meta: convert_to::create_transaction_meta(info.transaction_status_meta),
             index: info.index,
             account_keys,
+            pre_accounts_states,
+            post_accounts_states,
         }
     }
 
     pub fn from_update_oneof(msg: SubscribeUpdateTransactionInfo) -> FromUpdateOneofResult<Self> {
+        let pre_accounts_states = msg
+            .pre_accounts_states
+            .into_iter()
+            .map(MessageAccountInfo::from_update_oneof)
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let post_accounts_states = msg
+            .post_accounts_states
+            .into_iter()
+            .map(MessageAccountInfo::from_update_oneof)
+            .collect::<Result<Vec<_>, _>>()?;
+
         Ok(Self {
             signature: Signature::try_from(msg.signature.as_slice())
                 .map_err(|_| "invalid signature length")?,
@@ -322,6 +377,8 @@ impl MessageTransactionInfo {
             meta: msg.meta.ok_or("meta message should be defined")?,
             index: msg.index as usize,
             account_keys: HashSet::new(),
+            pre_accounts_states,
+            post_accounts_states,
         })
     }
 
