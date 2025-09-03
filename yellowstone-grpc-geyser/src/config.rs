@@ -133,6 +133,17 @@ fn parse_taskset(taskset: &str) -> Result<Vec<usize>, String> {
     Ok(vec)
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_load_from_file() {
+        let config = Config::load_from_file("config.json").unwrap();
+        eprintln!("config = {:#?}", config);
+    }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ConfigGrpc {
