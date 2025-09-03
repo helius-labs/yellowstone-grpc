@@ -1042,13 +1042,16 @@ impl GrpcService {
                         };
 
                         if commitment == filter.get_commitment_level() {
-                            for (_, message) in messages.iter() {
-                                clickhouse_sink::event::record(message.get_latency_payload("ys_client_recv"));
-                            }
                             for (_msgid, message) in messages.iter() {
-                                clickhouse_sink::event::record(message.get_latency_payload("ys_client_queue"));
+                                let mut message_clone = if commitment == CommitmentLevel::Processed {
+                                    clickhouse_sink::event::record(message.get_latency_payload("ys_client_queue"));
+                                    Some(message.clone())
+                                } else {
+                                    None
+                                };
+
                                 for updates in filter.get_updates(message, Some(commitment)) {
-                                    match stream_tx.try_send(Ok((updates, Some(message.clone())))) {
+                                    match stream_tx.try_send(Ok((updates, message_clone.take()))) {
                                         Ok(()) => {
                                         }
                                         Err(mpsc::error::TrySendError::Full(_)) => {
