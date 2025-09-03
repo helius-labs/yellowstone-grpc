@@ -16,12 +16,13 @@ use {
     prost_types::Timestamp,
     solana_sdk::{
         clock::Slot,
-        hash::{Hash, HASH_BYTES},
+        hash::{Hash as SolanaHash, HASH_BYTES},
         pubkey::Pubkey,
         signature::Signature,
     },
     std::{
-        collections::HashSet,
+        collections::{hash_map::DefaultHasher, HashSet},
+        hash::{Hash, Hasher},
         ops::{Deref, DerefMut},
         sync::Arc,
         time::SystemTime,
@@ -67,7 +68,7 @@ impl CommitmentLevel {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum SlotStatus {
     Processed,
     Confirmed,
@@ -169,6 +170,14 @@ impl MessageSlot {
         }
     }
 
+    pub fn slot(&self) -> Slot {
+        self.slot
+    }
+
+    pub fn commitment(&self) -> SlotStatus {
+        self.status
+    }
+
     pub fn from_update_oneof(
         msg: &SubscribeUpdateSlot,
         created_at: Timestamp,
@@ -246,6 +255,14 @@ impl MessageAccount {
             is_startup,
             created_at: Timestamp::from(SystemTime::now()),
         }
+    }
+
+    pub fn pubkey(&self) -> &Pubkey {
+        &self.account.pubkey
+    }
+
+    pub fn write_version(&self) -> u64 {
+        self.account.write_version
     }
 
     pub fn from_update_oneof(
@@ -355,6 +372,10 @@ impl MessageTransaction {
         }
     }
 
+    pub fn signature(&self) -> &Signature {
+        &self.transaction.signature
+    }
+
     pub fn from_update_oneof(
         msg: SubscribeUpdateTransaction,
         created_at: Timestamp,
@@ -375,7 +396,7 @@ pub struct MessageEntry {
     pub slot: u64,
     pub index: usize,
     pub num_hashes: u64,
-    pub hash: Hash,
+    pub hash: SolanaHash,
     pub executed_transaction_count: u64,
     pub starting_transaction_index: u64,
     pub created_at: Timestamp,
@@ -387,7 +408,7 @@ impl MessageEntry {
             slot: info.slot,
             index: info.index,
             num_hashes: info.num_hashes,
-            hash: Hash::new_from_array(<[u8; HASH_BYTES]>::try_from(info.hash).unwrap()),
+            hash: SolanaHash::new_from_array(<[u8; HASH_BYTES]>::try_from(info.hash).unwrap()),
             executed_transaction_count: info.executed_transaction_count,
             starting_transaction_index: info
                 .starting_transaction_index
@@ -395,6 +416,14 @@ impl MessageEntry {
                 .expect("failed convert usize to u64"),
             created_at: Timestamp::from(SystemTime::now()),
         }
+    }
+
+    pub fn slot(&self) -> u64 {
+        self.slot
+    }
+
+    pub fn index(&self) -> usize {
+        self.index
     }
 
     pub fn from_update_oneof(
@@ -405,7 +434,7 @@ impl MessageEntry {
             slot: msg.slot,
             index: msg.index as usize,
             num_hashes: msg.num_hashes,
-            hash: Hash::new_from_array(
+            hash: SolanaHash::new_from_array(
                 <[u8; HASH_BYTES]>::try_from(msg.hash.as_slice())
                     .map_err(|_| "invalid hash length")?,
             ),
@@ -420,6 +449,12 @@ impl MessageEntry {
 pub struct MessageBlockMeta {
     pub block_meta: SubscribeUpdateBlockMeta,
     pub created_at: Timestamp,
+}
+
+impl MessageBlockMeta {
+    pub fn slot(&self) -> u64 {
+        self.block_meta.slot
+    }
 }
 
 impl Deref for MessageBlockMeta {
@@ -493,6 +528,10 @@ impl MessageBlock {
             entries,
             created_at: Timestamp::from(SystemTime::now()),
         }
+    }
+
+    pub fn slot(&self) -> u64 {
+        self.meta.slot()
     }
 
     pub fn from_update_oneof(
@@ -583,6 +622,57 @@ impl Message {
             UpdateOneof::Entry(msg) => {
                 Self::Entry(Arc::new(MessageEntry::from_update_oneof(&msg, created_at)?))
             }
+        })
+    }
+
+    fn get_message_id_hash(&self) -> String {
+        let mut hasher = DefaultHasher::new();
+
+        match self {
+            Self::Account(msg) => {
+                msg.pubkey().hash(&mut hasher);
+                msg.write_version().hash(&mut hasher);
+            }
+            Self::Transaction(msg) => {
+                msg.signature().hash(&mut hasher);
+            }
+            Self::Slot(msg) => {
+                msg.slot().hash(&mut hasher);
+                msg.commitment().hash(&mut hasher);
+            }
+            Self::Entry(msg) => {
+                msg.slot().hash(&mut hasher);
+                msg.index().hash(&mut hasher);
+            }
+            Self::BlockMeta(msg) => {
+                msg.slot().hash(&mut hasher);
+            }
+            Self::Block(msg) => {
+                msg.slot().hash(&mut hasher);
+            }
+        }
+
+        format!("{:x}", hasher.finish())
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Message::Slot(_) => "slot",
+            Message::Account(_) => "account",
+            Message::Transaction(_) => "transaction",
+            Message::Entry(_) => "entry",
+            Message::BlockMeta(_) => "block_meta",
+            Message::Block(_) => "block",
+        }
+    }
+
+    pub fn get_latency_payload(&self, stage: &str) -> serde_json::Value {
+        serde_json::json!({
+            "metric_type": "latency",
+            "message_id": self.get_message_id_hash(),
+            "stage": stage,
+            "slot": self.get_slot(),
+            "message_type": self.as_str()
         })
     }
 
