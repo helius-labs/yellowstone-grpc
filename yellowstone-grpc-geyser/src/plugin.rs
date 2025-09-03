@@ -91,6 +91,12 @@ impl GeyserPlugin for Plugin {
 
         let (snapshot_channel, grpc_channel, grpc_shutdown, prometheus) =
             runtime.block_on(async move {
+                if let Some(config) = config.clickhouse {
+                    clickhouse_sink::init(config)
+                        .await
+                        .expect("Failed to setup clickhouse");
+                }
+
                 let (debug_client_tx, debug_client_rx) = mpsc::unbounded_channel();
                 let (snapshot_channel, grpc_channel, grpc_shutdown) = GrpcService::create(
                     config.tokio,

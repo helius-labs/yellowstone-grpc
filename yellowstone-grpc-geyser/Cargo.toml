@@ -26,6 +26,7 @@ bincode = { workspace = true }
 bs58 = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
 crossbeam-channel = { workspace = true }
+clickhouse-sink = { path = "../clickhouse-sink" }
 futures = { workspace = true }
 hostname = { workspace = true }
 http = { workspace = true }
