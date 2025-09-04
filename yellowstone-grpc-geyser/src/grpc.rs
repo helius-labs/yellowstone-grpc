@@ -16,7 +16,7 @@ use {
         pin::Pin,
         sync::{
             atomic::{AtomicUsize, Ordering},
-            Arc, RwLock,
+            Arc, RwLock as RwLockStd,
         },
         task::Poll,
         time::SystemTime,
@@ -24,7 +24,7 @@ use {
     tokio::{
         fs,
         runtime::Builder,
-        sync::{broadcast, mpsc, oneshot, Mutex, Notify, Semaphore},
+        sync::{broadcast, mpsc, oneshot, Mutex, Notify, RwLock, Semaphore},
         task::spawn_blocking,
         time::{sleep, Duration, Instant},
     },
@@ -105,7 +105,7 @@ impl BlockMetaStorage {
             const KEEP_SLOTS: u64 = 3;
 
             while let Some(message) = rx.recv().await {
-                let mut storage = storage.write().unwrap();
+                let mut storage = storage.write().await;
                 match message {
                     Message::Slot(msg) => {
                         match msg.status {
@@ -198,7 +198,7 @@ impl BlockMetaStorage {
     {
         let commitment = Self::parse_commitment(commitment)?;
         let _permit = self.read_sem.acquire().await;
-        let storage = self.inner.read().unwrap();
+        let storage = self.inner.read().await;
 
         let slot = match commitment {
             CommitmentLevel::Processed => storage.processed,
@@ -222,7 +222,7 @@ impl BlockMetaStorage {
     ) -> Result<Response<IsBlockhashValidResponse>, Status> {
         let commitment = Self::parse_commitment(commitment)?;
         let _permit = self.read_sem.acquire().await;
-        let storage = self.inner.read().unwrap();
+        let storage = self.inner.read().await;
 
         if storage.blockhashes.len() < MAX_RECENT_BLOCKHASHES + 32 {
             return Err(Status::internal("startup"));
@@ -343,7 +343,7 @@ pub struct GrpcService {
     replay_stored_slots_tx: Option<mpsc::Sender<ReplayStoredSlotsRequest>>,
     debug_clients_tx: Option<mpsc::UnboundedSender<DebugClientMessage>>,
     filter_names: Arc<Mutex<FilterNames>>,
-    raw_client_channels: Arc<RwLock<Vec<(u64, crossbeam_channel::Sender<Message>)>>>,
+    raw_client_channels: Arc<RwLockStd<Vec<(u64, crossbeam_channel::Sender<Message>)>>>,
 }
 
 impl GrpcService {
@@ -352,7 +352,7 @@ impl GrpcService {
         config_tokio: ConfigTokio,
         config: ConfigGrpc,
         debug_clients_tx: Option<mpsc::UnboundedSender<DebugClientMessage>>,
-        raw_client_channels: Arc<RwLock<Vec<(u64, crossbeam_channel::Sender<Message>)>>>,
+        raw_client_channels: Arc<RwLockStd<Vec<(u64, crossbeam_channel::Sender<Message>)>>>,
         is_reload: bool,
     ) -> anyhow::Result<(
         Option<crossbeam_channel::Sender<Box<Message>>>,
@@ -1158,14 +1158,14 @@ impl GrpcService {
 
 pub struct CrossbeamReceiverStream {
     inner: crossbeam_channel::Receiver<Message>,
-    raw_client_channels: Arc<RwLock<Vec<(u64, crossbeam_channel::Sender<Message>)>>>,
+    raw_client_channels: Arc<RwLockStd<Vec<(u64, crossbeam_channel::Sender<Message>)>>>,
     client_id: u64,
 }
 
 impl CrossbeamReceiverStream {
     fn new(
         inner: crossbeam_channel::Receiver<Message>,
-        raw_client_channels: Arc<RwLock<Vec<(u64, crossbeam_channel::Sender<Message>)>>>,
+        raw_client_channels: Arc<RwLockStd<Vec<(u64, crossbeam_channel::Sender<Message>)>>>,
         client_id: u64,
     ) -> Self {
         Self {
