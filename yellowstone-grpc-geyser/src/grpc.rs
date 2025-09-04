@@ -15,7 +15,7 @@ use {
         pin::Pin,
         sync::{
             atomic::{AtomicUsize, Ordering},
-            Arc,
+            Arc, RwLock,
         },
         task::Poll,
         time::SystemTime,
@@ -342,7 +342,7 @@ pub struct GrpcService {
     replay_stored_slots_tx: Option<mpsc::Sender<ReplayStoredSlotsRequest>>,
     debug_clients_tx: Option<mpsc::UnboundedSender<DebugClientMessage>>,
     filter_names: Arc<Mutex<FilterNames>>,
-    raw_client_tx: mpsc::UnboundedSender<mpsc::UnboundedSender<(u64, Message)>>,
+    raw_client_channels: Arc<RwLock<Vec<crossbeam_channel::Sender<Message>>>>,
 }
 
 impl GrpcService {
@@ -351,6 +351,7 @@ impl GrpcService {
         config_tokio: ConfigTokio,
         config: ConfigGrpc,
         debug_clients_tx: Option<mpsc::UnboundedSender<DebugClientMessage>>,
+        raw_client_channels: Arc<RwLock<Vec<crossbeam_channel::Sender<Message>>>>,
         is_reload: bool,
     ) -> anyhow::Result<(
         Option<crossbeam_channel::Sender<Box<Message>>>,
@@ -393,8 +394,6 @@ impl GrpcService {
             (Some(tx), Some(rx))
         };
 
-        // Raw client registration channel
-        let (raw_client_tx, raw_client_rx) = mpsc::unbounded_channel();
 
         // gRPC server builder with optional TLS
         let mut server_builder = Server::builder();
@@ -444,7 +443,7 @@ impl GrpcService {
             replay_stored_slots_tx,
             debug_clients_tx,
             filter_names,
-            raw_client_tx,
+            raw_client_channels,
         })
         .max_decoding_message_size(max_decoding_message_size);
         for encoding in config.compression.accept {
@@ -477,7 +476,6 @@ impl GrpcService {
                     blocks_meta_tx,
                     broadcast_tx,
                     replay_stored_slots_rx,
-                    raw_client_rx,
                     config.replay_stored_slots,
                 ));
         });
@@ -515,7 +513,6 @@ impl GrpcService {
         blocks_meta_tx: Option<mpsc::UnboundedSender<Message>>,
         broadcast_tx: broadcast::Sender<BroadcastedMessage>,
         replay_stored_slots_rx: Option<mpsc::Receiver<ReplayStoredSlotsRequest>>,
-        mut raw_client_rx: mpsc::UnboundedReceiver<mpsc::UnboundedSender<(u64, Message)>>,
         replay_stored_slots: u64,
     ) {
         const PROCESSED_MESSAGES_MAX: usize = 31;

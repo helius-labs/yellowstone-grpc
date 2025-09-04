@@ -126,7 +126,7 @@ impl GeyserPlugin for Plugin {
             .build()
             .map_err(|error| GeyserPluginError::Custom(Box::new(error)))?;
 
-        let (snapshot_channel, grpc_channel, grpc_shutdown, prometheus) =
+        let (snapshot_channel, grpc_channel, grpc_shutdown, prometheus, raw_client_channels) =
             runtime.block_on(async move {
                 if let Some(config) = config.clickhouse {
                     clickhouse_sink::init(config)
@@ -135,10 +135,15 @@ impl GeyserPlugin for Plugin {
                 }
 
                 let (debug_client_tx, debug_client_rx) = mpsc::unbounded_channel();
+                
+                // Create shared raw client channels
+                let raw_client_channels = Arc::new(RwLock::new(Vec::new()));
+                
                 let (snapshot_channel, grpc_channel, grpc_shutdown) = GrpcService::create(
                     config.tokio,
                     config.grpc,
                     config.debug_clients_http.then_some(debug_client_tx),
+                    raw_client_channels.clone(),
                     is_reload,
                 )
                 .await
@@ -166,6 +171,7 @@ impl GeyserPlugin for Plugin {
                     grpc_channel,
                     grpc_shutdown,
                     prometheus,
+                    raw_client_channels,
                 ))
             })?;
 
@@ -176,7 +182,7 @@ impl GeyserPlugin for Plugin {
             grpc_channel,
             grpc_shutdown,
             prometheus,
-            raw_client_channels: Arc::new(RwLock::new(Vec::new())),
+            raw_client_channels,
         });
 
         Ok(())
