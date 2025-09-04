@@ -1,0 +1,17 @@
+[package]
+name = "clickhouse-sink"
+version = "0.1.0"
+edition = "2021"
+authors = ["Laserstream <info@laserstream.io>"]
+description = "ClickHouse data sink for telemetry"
+license = "MIT"
+
+[dependencies]
+anyhow = {workspace = true}
+clickhouse = {workspace = true}
+tokio = {workspace = true}
+serde = {workspace = true, features = ["derive"]}
+serde_json = {workspace = true}
+time = {workspace = true}
+log = {workspace = true}
+once_cell = {workspace = true}

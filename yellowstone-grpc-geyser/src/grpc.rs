@@ -1,9 +1,7 @@
 use {
     crate::{
         config::{ConfigGrpc, ConfigTokio},
-        metrics::{
-            self, record_message_latency, record_message_latency_helper, DebugClientMessage,
-        },
+        metrics::{self, DebugClientMessage},
         version::GrpcVersionInfo,
     },
     anyhow::Context,
@@ -537,7 +535,7 @@ impl GrpcService {
         tokio::spawn(async move {
             let mut sequence = 0;
             while let Some(message) = messages_rx.recv().await {
-                record_message_latency(&message, "received_message");
+                clickhouse_sink::event::record(message.get_latency_payload("ys_geyser_loop_recv"));
                 let tx = sequencer_txs[sequence % num_compression_workers].clone();
                 tx.send((sequence, message)).unwrap();
                 sequence += 1;
@@ -571,7 +569,9 @@ impl GrpcService {
                     } else {
                         message
                     };
-                    record_message_latency(&mutated_message, "compressed_message");
+                    clickhouse_sink::event::record(
+                        mutated_message.get_latency_payload("ys_compressed"),
+                    );
                     compressed_mpsc_tx
                         .send((sequence, mutated_message))
                         .unwrap();
@@ -588,7 +588,9 @@ impl GrpcService {
                 loop {
                     if messages.contains_key(&next_sequence) {
                         let message = messages.remove(&next_sequence).unwrap();
-                        record_message_latency(&message, "rearranged_message");
+                        clickhouse_sink::event::record(
+                            message.get_latency_payload("ys_rearranged"),
+                        );
                         rearrange_tx.send(message).unwrap();
                         next_sequence += 1;
                     } else {
@@ -902,7 +904,7 @@ impl GrpcService {
     async fn client_loop(
         id: usize,
         endpoint: String,
-        stream_tx: mpsc::Sender<TonicResult<FilteredUpdate>>,
+        stream_tx: mpsc::Sender<TonicResult<(FilteredUpdate, Option<Message>)>>,
         mut client_rx: mpsc::UnboundedReceiver<Option<(Option<u64>, Filter)>>,
         mut snapshot_rx: Option<crossbeam_channel::Receiver<Box<Message>>>,
         mut messages_rx: broadcast::Receiver<BroadcastedMessage>,
@@ -1002,7 +1004,7 @@ impl GrpcService {
                                     messages.sort_by_key(|msg| msg.0);
                                     for (_msgid, message) in messages.iter() {
                                         for message in filter.get_updates(message, Some(commitment)) {
-                                            match stream_tx.send(Ok(message)).await {
+                                            match stream_tx.send(Ok((message, None))).await {
                                                 Ok(()) => {
                                                 }
                                                 Err(mpsc::error::SendError(_)) => {
@@ -1040,17 +1042,17 @@ impl GrpcService {
                         };
 
                         if commitment == filter.get_commitment_level() {
-                            for (_, message) in messages.iter() {
-                                record_message_latency(message, "received_message_for_filtering");
-                            }
                             for (_msgid, message) in messages.iter() {
-                                let created_at = message.created_at();
-                                let message_type = message.type_name();
-                                for message in filter.get_updates(message, Some(commitment)) {
-                                    record_message_latency_helper(created_at, "filtered_message", message_type);
-                                    match stream_tx.try_send(Ok(message)) {
+                                let mut message_clone = if commitment == CommitmentLevel::Processed {
+                                    clickhouse_sink::event::record(message.get_latency_payload("ys_client_queue"));
+                                    Some(message.clone())
+                                } else {
+                                    None
+                                };
+
+                                for updates in filter.get_updates(message, Some(commitment)) {
+                                    match stream_tx.try_send(Ok((updates, message_clone.take()))) {
                                         Ok(()) => {
-                                            record_message_latency_helper(created_at, "sent_message_after_filtering", message_type);
                                         }
                                         Err(mpsc::error::TrySendError::Full(_)) => {
                                             error!("client #{id}: lagged to send an update");
@@ -1090,7 +1092,7 @@ impl GrpcService {
     async fn client_loop_snapshot(
         id: usize,
         endpoint: &str,
-        stream_tx: &mpsc::Sender<TonicResult<FilteredUpdate>>,
+        stream_tx: &mpsc::Sender<TonicResult<(FilteredUpdate, Option<Message>)>>,
         client_rx: &mut mpsc::UnboundedReceiver<Option<(Option<u64>, Filter)>>,
         snapshot_rx: crossbeam_channel::Receiver<Box<Message>>,
         is_alive: &mut bool,
@@ -1103,7 +1105,7 @@ impl GrpcService {
             match client_rx.recv().await {
                 Some(Some((_from_slot, filter_new))) => {
                     if let Some(msg) = filter_new.get_pong_msg() {
-                        if stream_tx.send(Ok(msg)).await.is_err() {
+                        if stream_tx.send(Ok((msg, None))).await.is_err() {
                             error!("client #{id}: stream closed");
                             *is_alive = false;
                         }
@@ -1141,7 +1143,7 @@ impl GrpcService {
             };
 
             for message in filter.get_updates(&message, None) {
-                if stream_tx.send(Ok(message)).await.is_err() {
+                if stream_tx.send(Ok((message, None))).await.is_err() {
                     error!("client #{id}: stream closed");
                     *is_alive = false;
                     break;
@@ -1152,7 +1154,7 @@ impl GrpcService {
 }
 
 pub struct ReceiverStreamWithMetrics {
-    inner: mpsc::Receiver<TonicResult<FilteredUpdate>>,
+    inner: mpsc::Receiver<TonicResult<(FilteredUpdate, Option<Message>)>>,
 }
 
 impl Stream for ReceiverStreamWithMetrics {
@@ -1162,13 +1164,11 @@ impl Stream for ReceiverStreamWithMetrics {
         self: Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> Poll<Option<Self::Item>> {
-        let result = Pin::new(&mut self.get_mut().inner).poll_recv(cx);
-        if let Poll::Ready(Some(Ok(message))) = &result {
-            let created_at = message.created_at;
-            let message_type = message.message.type_name();
-            record_message_latency_helper(created_at, "received_message_for_sending", message_type);
+        let poll_result = Pin::new(&mut self.get_mut().inner).poll_recv(cx);
+        if let Poll::Ready(Some(Ok((_, Some(message))))) = &poll_result {
+            clickhouse_sink::event::record(message.get_latency_payload("ys_client_send"));
         }
-        result
+        poll_result.map(|opt| opt.map(|res| res.map(|(updates, _message)| updates)))
     }
 }
 
@@ -1269,7 +1269,7 @@ impl GrpcService {
                     }
                     _ = sleep(Duration::from_secs(10)) => {
                         let msg = FilteredUpdate::new_empty(FilteredUpdateOneof::ping());
-                        match ping_stream_tx.try_send(Ok(msg)) {
+                        match ping_stream_tx.try_send(Ok((msg, None))) {
                             Ok(()) => {}
                             Err(mpsc::error::TrySendError::Full(_)) => {}
                             Err(mpsc::error::TrySendError::Closed(_)) => {
@@ -1310,7 +1310,7 @@ impl GrpcService {
                             if let Err(error) = match Filter::new(&request, &config_filter_limits, &mut filter_names) {
                                 Ok(filter) => {
                                     if let Some(msg) = filter.get_pong_msg() {
-                                        if incoming_stream_tx.send(Ok(msg)).await.is_err() {
+                                        if incoming_stream_tx.send(Ok((msg, None))).await.is_err() {
                                             error!("client #{id}: stream closed");
                                             let _ = incoming_client_tx.send(None);
                                             break;
