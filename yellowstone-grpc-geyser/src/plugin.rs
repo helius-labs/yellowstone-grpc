@@ -15,7 +15,7 @@ use {
         concat, env,
         sync::{
             atomic::{AtomicBool, Ordering},
-            Arc, Mutex,
+            Arc, Mutex, RwLock,
         },
         time::Duration,
     },
@@ -36,10 +36,24 @@ pub struct PluginInner {
     grpc_channel: mpsc::UnboundedSender<Message>,
     grpc_shutdown: Arc<Notify>,
     prometheus: PrometheusService,
+    raw_client_channels: Arc<RwLock<Vec<crossbeam_channel::Sender<Message>>>>,
 }
 
 impl PluginInner {
     fn send_message(&self, message: Message) {
+        // Send to raw clients first (bypasses all processing)
+        if let Ok(raw_clients) = self.raw_client_channels.read() {
+            if !raw_clients.is_empty() {
+                for (index, tx) in raw_clients.iter().enumerate() {
+                    if let Err(_) = tx.send(message.clone()) {
+                        // Channel disconnected, will be cleaned up later
+                        log::warn!("Raw client {} channel disconnected", index);
+                    }
+                }
+            }
+        }
+
+        // Then send to regular geyser_loop pipeline
         if self.grpc_channel.send(message).is_ok() {
             metrics::message_queue_size_inc();
         }
@@ -58,6 +72,29 @@ impl Plugin {
     {
         let inner = self.inner.as_ref().expect("initialized");
         f(inner)
+    }
+
+    pub fn register_raw_client(&self, tx: crossbeam_channel::Sender<Message>) -> PluginResult<()> {
+        let inner = self.inner.as_ref().expect("initialized");
+        if let Ok(mut raw_clients) = inner.raw_client_channels.write() {
+            raw_clients.push(tx);
+            log::info!("Registered raw client, total: {}", raw_clients.len());
+        }
+        Ok(())
+    }
+
+    pub fn cleanup_disconnected_raw_clients(&self) -> PluginResult<()> {
+        let inner = self.inner.as_ref().expect("initialized");
+        if let Ok(mut raw_clients) = inner.raw_client_channels.write() {
+            let original_count = raw_clients.len();
+            raw_clients.retain(|tx| !tx.is_disconnected());
+            let new_count = raw_clients.len();
+            if new_count != original_count {
+                log::info!("Cleaned up {} disconnected raw clients, remaining: {}", 
+                          original_count - new_count, new_count);
+            }
+        }
+        Ok(())
     }
 }
 
@@ -139,6 +176,7 @@ impl GeyserPlugin for Plugin {
             grpc_channel,
             grpc_shutdown,
             prometheus,
+            raw_client_channels: Arc::new(RwLock::new(Vec::new())),
         });
 
         Ok(())

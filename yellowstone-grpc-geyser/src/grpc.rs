@@ -342,6 +342,7 @@ pub struct GrpcService {
     replay_stored_slots_tx: Option<mpsc::Sender<ReplayStoredSlotsRequest>>,
     debug_clients_tx: Option<mpsc::UnboundedSender<DebugClientMessage>>,
     filter_names: Arc<Mutex<FilterNames>>,
+    raw_client_tx: mpsc::UnboundedSender<mpsc::UnboundedSender<(u64, Message)>>,
 }
 
 impl GrpcService {
@@ -392,6 +393,9 @@ impl GrpcService {
             (Some(tx), Some(rx))
         };
 
+        // Raw client registration channel
+        let (raw_client_tx, raw_client_rx) = mpsc::unbounded_channel();
+
         // gRPC server builder with optional TLS
         let mut server_builder = Server::builder();
         if let Some(tls_config) = &config.tls_config {
@@ -440,6 +444,7 @@ impl GrpcService {
             replay_stored_slots_tx,
             debug_clients_tx,
             filter_names,
+            raw_client_tx,
         })
         .max_decoding_message_size(max_decoding_message_size);
         for encoding in config.compression.accept {
@@ -472,6 +477,7 @@ impl GrpcService {
                     blocks_meta_tx,
                     broadcast_tx,
                     replay_stored_slots_rx,
+                    raw_client_rx,
                     config.replay_stored_slots,
                 ));
         });
@@ -509,6 +515,7 @@ impl GrpcService {
         blocks_meta_tx: Option<mpsc::UnboundedSender<Message>>,
         broadcast_tx: broadcast::Sender<BroadcastedMessage>,
         replay_stored_slots_rx: Option<mpsc::Receiver<ReplayStoredSlotsRequest>>,
+        mut raw_client_rx: mpsc::UnboundedReceiver<mpsc::UnboundedSender<(u64, Message)>>,
         replay_stored_slots: u64,
     ) {
         const PROCESSED_MESSAGES_MAX: usize = 31;
