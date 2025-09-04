@@ -1,3 +1,4 @@
+use yellowstone_grpc_proto::plugin::filter::message::FilteredUpdateBatch;
 use {
     crate::{
         config::{ConfigGrpc, ConfigTokio},
@@ -58,7 +59,6 @@ use {
         },
     },
 };
-use yellowstone_grpc_proto::plugin::filter::message::FilteredUpdateBatch;
 
 #[derive(Debug)]
 struct BlockhashStatus {
@@ -1091,6 +1091,7 @@ impl GrpcService {
 #[tonic::async_trait]
 impl Geyser for GrpcService {
     type SubscribeStream = ReceiverStream<TonicResult<FilteredUpdate>>;
+    type SubscribeRawStream = ReceiverStream<TonicResult<FilteredUpdate>>;
     type SubscribeBatchStream = ReceiverStream<TonicResult<FilteredUpdateBatch>>;
 
     async fn subscribe(
@@ -1209,6 +1210,13 @@ impl Geyser for GrpcService {
         ));
 
         Ok(Response::new(ReceiverStream::new(stream_rx)))
+    }
+
+    async fn subscribe_raw(
+        &self,
+        request: Request<Streaming<SubscribeRequest>>,
+    ) -> TonicResult<Response<Self::SubscribeRawStream>> {
+        todo!()
     }
 
     async fn subscribe_batch(
