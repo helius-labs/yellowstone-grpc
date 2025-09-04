@@ -394,7 +394,6 @@ impl GrpcService {
             (Some(tx), Some(rx))
         };
 
-
         // gRPC server builder with optional TLS
         let mut server_builder = Server::builder();
         if let Some(tls_config) = &config.tls_config {
@@ -517,7 +516,6 @@ impl GrpcService {
     ) {
         const PROCESSED_MESSAGES_MAX: usize = 31;
         const PROCESSED_MESSAGES_SLEEP: Duration = Duration::from_millis(10);
-
         let mut msgid_gen = MessageId::default();
         let mut messages: BTreeMap<u64, SlotMessages> = Default::default();
         let mut processed_messages = Vec::with_capacity(PROCESSED_MESSAGES_MAX);
@@ -1154,6 +1152,68 @@ impl GrpcService {
                 }
             }
         }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn client_loop_raw(
+        id: usize,
+        endpoint: String,
+        stream_tx: mpsc::Sender<TonicResult<(FilteredUpdate, Option<Message>)>>,
+        mut raw_message_rx: crossbeam_channel::Receiver<Message>,
+        drop_client: impl FnOnce(),
+    ) {
+        info!("client #{id}: new raw client");
+        metrics::connections_total_inc();
+
+        loop {
+            match raw_message_rx.try_recv() {
+                Ok(message) => {
+                    // Convert raw Message to FilteredUpdate (skip all filtering)
+                    let filtered_update = match &message {
+                        Message::Account(msg) => FilteredUpdate::new_empty(
+                            FilteredUpdateOneof::account(msg, Default::default()),
+                        ),
+                        Message::Slot(msg) => {
+                            FilteredUpdate::new_empty(FilteredUpdateOneof::slot(msg.clone()))
+                        }
+                        Message::Transaction(msg) => {
+                            FilteredUpdate::new_empty(FilteredUpdateOneof::transaction(msg))
+                        }
+                        Message::Entry(msg) => {
+                            FilteredUpdate::new_empty(FilteredUpdateOneof::entry(Arc::clone(msg)))
+                        }
+                        Message::BlockMeta(msg) => FilteredUpdate::new_empty(
+                            FilteredUpdateOneof::block_meta(Arc::clone(msg)),
+                        ),
+                        _ => {
+                            unreachable!("will never receive block messages in raw mode")
+                        }
+                    };
+
+                    // Send to client stream
+                    match stream_tx.send(Ok((filtered_update, None))).await {
+                        Ok(()) => {}
+                        Err(mpsc::error::SendError(_)) => {
+                            error!("raw client #{id}: stream closed");
+                            break;
+                        }
+                    }
+                }
+                Err(crossbeam_channel::TryRecvError::Empty) => {
+                    // No messages available, yield briefly
+                    tokio::task::yield_now().await;
+                    continue;
+                }
+                Err(crossbeam_channel::TryRecvError::Disconnected) => {
+                    info!("raw client #{id}: channel disconnected");
+                    break;
+                }
+            }
+        }
+
+        metrics::connections_total_dec();
+        info!("raw client #{id}: removed");
+        drop_client();
     }
 }
 
