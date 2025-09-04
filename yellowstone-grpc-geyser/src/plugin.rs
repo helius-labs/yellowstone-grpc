@@ -74,28 +74,6 @@ impl Plugin {
         f(inner)
     }
 
-    pub fn register_raw_client(&self, tx: crossbeam_channel::Sender<Message>) -> PluginResult<()> {
-        let inner = self.inner.as_ref().expect("initialized");
-        if let Ok(mut raw_clients) = inner.raw_client_channels.write() {
-            raw_clients.push(tx);
-            log::info!("Registered raw client, total: {}", raw_clients.len());
-        }
-        Ok(())
-    }
-
-    pub fn cleanup_disconnected_raw_clients(&self) -> PluginResult<()> {
-        let inner = self.inner.as_ref().expect("initialized");
-        if let Ok(mut raw_clients) = inner.raw_client_channels.write() {
-            let original_count = raw_clients.len();
-            raw_clients.retain(|tx| !tx.is_disconnected());
-            let new_count = raw_clients.len();
-            if new_count != original_count {
-                log::info!("Cleaned up {} disconnected raw clients, remaining: {}", 
-                          original_count - new_count, new_count);
-            }
-        }
-        Ok(())
-    }
 }
 
 impl GeyserPlugin for Plugin {

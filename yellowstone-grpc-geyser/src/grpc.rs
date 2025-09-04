@@ -5,7 +5,7 @@ use {
         version::GrpcVersionInfo,
     },
     anyhow::Context,
-    futures::task::Context,
+    futures::task::Context as TaskContext,
     futures::Stream,
     log::{error, info},
     lz4_flex::block::compress_prepend_size,
@@ -24,7 +24,7 @@ use {
     tokio::{
         fs,
         runtime::Builder,
-        sync::{broadcast, mpsc, oneshot, Mutex, Notify, RwLock, Semaphore},
+        sync::{broadcast, mpsc, oneshot, Mutex, Notify, Semaphore},
         task::spawn_blocking,
         time::{sleep, Duration, Instant},
     },
@@ -105,7 +105,7 @@ impl BlockMetaStorage {
             const KEEP_SLOTS: u64 = 3;
 
             while let Some(message) = rx.recv().await {
-                let mut storage = storage.write().await;
+                let mut storage = storage.write().unwrap();
                 match message {
                     Message::Slot(msg) => {
                         match msg.status {
@@ -198,7 +198,7 @@ impl BlockMetaStorage {
     {
         let commitment = Self::parse_commitment(commitment)?;
         let _permit = self.read_sem.acquire().await;
-        let storage = self.inner.read().await;
+        let storage = self.inner.read().unwrap();
 
         let slot = match commitment {
             CommitmentLevel::Processed => storage.processed,
@@ -222,7 +222,7 @@ impl BlockMetaStorage {
     ) -> Result<Response<IsBlockhashValidResponse>, Status> {
         let commitment = Self::parse_commitment(commitment)?;
         let _permit = self.read_sem.acquire().await;
-        let storage = self.inner.read().await;
+        let storage = self.inner.read().unwrap();
 
         if storage.blockhashes.len() < MAX_RECENT_BLOCKHASHES + 32 {
             return Err(Status::internal("startup"));
@@ -332,7 +332,7 @@ enum ReplayedResponse {
 type ReplayStoredSlotsRequest = (CommitmentLevel, Slot, oneshot::Sender<ReplayedResponse>);
 
 #[derive(Debug)]
-pub struct GotherrpcService {
+pub struct GrpcService {
     config_snapshot_client_channel_capacity: usize,
     config_channel_capacity: usize,
     config_filter_limits: Arc<FilterLimits>,
@@ -1195,7 +1195,7 @@ impl Drop for CrossbeamReceiverStream {
 impl Stream for CrossbeamReceiverStream {
     type Item = TonicResult<FilteredUpdate>;
 
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+    fn poll_next(self: Pin<&mut Self>, cx: &mut TaskContext<'_>) -> Poll<Option<Self::Item>> {
         match self.inner.try_recv() {
             Ok(message) => {
                 // TODO need to check this mapping is correct
@@ -1368,7 +1368,7 @@ impl GrpcService {
             .unwrap_or_else(|| "".to_owned());
 
         let config_filter_limits = Arc::clone(&self.config_filter_limits);
-        let filter_names = Arc::clone(&self.filter_names);
+        let filter_names: Arc<Mutex<FilterNames>> = Arc::clone(&self.filter_names);
         let incoming_stream_tx = stream_tx.clone();
         let incoming_client_tx = client_tx;
         let incoming_exit = Arc::clone(&notify_exit2);
