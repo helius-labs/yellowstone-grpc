@@ -1196,9 +1196,20 @@ impl Stream for CrossbeamReceiverStream {
     type Item = TonicResult<FilteredUpdate>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut TaskContext<'_>) -> Poll<Option<Self::Item>> {
+        const MAX_QUEUE_SIZE: usize = 1_000_000;
+
+        if self.inner.len() > MAX_QUEUE_SIZE {
+            info!(
+                "Raw client {} queue too large ({}), disconnecting",
+                self.client_id,
+                self.inner.len()
+            );
+            return Poll::Ready(None);
+        }
+
         match self.inner.try_recv() {
             Ok(message) => {
-                // TODO need to check this mapping is correct
+                clickhouse_sink::event::record(message.get_latency_payload("ys_client_send_raw"));
                 // Convert raw Message to FilteredUpdate
                 let filtered_update = match &message {
                     Message::Account(msg) => FilteredUpdate::new_empty(
@@ -1447,6 +1458,7 @@ impl GrpcService {
 impl Geyser for GrpcService {
     type SubscribeStream = ReceiverStreamWithMetrics;
     type SubscribeBatchStream = ReceiverStreamWithMetricsBatch;
+    type SubscribeRawStream = CrossbeamReceiverStream;
 
     async fn subscribe(
         &self,
@@ -1465,6 +1477,32 @@ impl Geyser for GrpcService {
         Ok(Response::new(ReceiverStreamWithMetricsBatch::new(
             subscribe_result,
             Duration::from_millis(1),
+        )))
+    }
+
+    async fn subscribe_raw(
+        &self,
+        _request: Request<Streaming<SubscribeRequest>>,
+    ) -> TonicResult<Response<Self::SubscribeRawStream>> {
+        let (raw_message_tx, raw_message_rx) = crossbeam_channel::unbounded();
+
+        // Register raw client channel with unique ID
+        let client_id = self.subscribe_id.fetch_add(1, Ordering::Relaxed) as u64;
+        if let Ok(mut raw_clients) = self.raw_client_channels.write() {
+            raw_clients.push((client_id, raw_message_tx));
+            info!(
+                "registered raw client {}, total: {}",
+                client_id,
+                raw_clients.len()
+            );
+        } else {
+            return Err(Status::internal("failed to register raw client"));
+        }
+
+        Ok(Response::new(CrossbeamReceiverStream::new(
+            raw_message_rx,
+            self.raw_client_channels.clone(),
+            client_id,
         )))
     }
 
@@ -1554,33 +1592,5 @@ impl Geyser for GrpcService {
         Ok(Response::new(GetVersionResponse {
             version: serde_json::to_string(&GrpcVersionInfo::default()).unwrap(),
         }))
-    }
-
-    type SubscribeRawStream = CrossbeamReceiverStream;
-
-    async fn subscribe_raw(
-        &self,
-        _request: Request<Streaming<SubscribeRequest>>,
-    ) -> TonicResult<Response<Self::SubscribeRawStream>> {
-        let (raw_message_tx, raw_message_rx) = crossbeam_channel::unbounded();
-
-        // Register raw client channel with unique ID
-        let client_id = self.subscribe_id.fetch_add(1, Ordering::Relaxed) as u64;
-        if let Ok(mut raw_clients) = self.raw_client_channels.write() {
-            raw_clients.push((client_id, raw_message_tx));
-            info!(
-                "registered raw client {}, total: {}",
-                client_id,
-                raw_clients.len()
-            );
-        } else {
-            return Err(Status::internal("failed to register raw client"));
-        }
-
-        Ok(Response::new(CrossbeamReceiverStream::new(
-            raw_message_rx,
-            self.raw_client_channels.clone(),
-            client_id,
-        )))
     }
 }
