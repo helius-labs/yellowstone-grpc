@@ -36,7 +36,7 @@ pub struct PluginInner {
     grpc_channel: mpsc::UnboundedSender<Message>,
     grpc_shutdown: Arc<Notify>,
     prometheus: PrometheusService,
-    raw_client_channels: Arc<RwLock<Vec<crossbeam_channel::Sender<Message>>>>,
+    raw_client_channels: Arc<RwLock<Vec<(u64, crossbeam_channel::Sender<Message>)>>>,
 }
 
 impl PluginInner {
@@ -44,10 +44,10 @@ impl PluginInner {
         // Send to raw clients first (bypasses all processing)
         if let Ok(raw_clients) = self.raw_client_channels.read() {
             if !raw_clients.is_empty() {
-                for (index, tx) in raw_clients.iter().enumerate() {
+                for (id, tx) in raw_clients.iter() {
                     if let Err(_) = tx.send(message.clone()) {
                         // Channel disconnected, will be cleaned up later
-                        log::warn!("Raw client {} channel disconnected", index);
+                        log::warn!("Raw client {} channel disconnected", id);
                     }
                 }
             }

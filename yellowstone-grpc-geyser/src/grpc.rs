@@ -5,6 +5,7 @@ use {
         version::GrpcVersionInfo,
     },
     anyhow::Context,
+    futures::task::Context,
     futures::Stream,
     log::{error, info},
     lz4_flex::block::compress_prepend_size,
@@ -331,7 +332,7 @@ enum ReplayedResponse {
 type ReplayStoredSlotsRequest = (CommitmentLevel, Slot, oneshot::Sender<ReplayedResponse>);
 
 #[derive(Debug)]
-pub struct GrpcService {
+pub struct GotherrpcService {
     config_snapshot_client_channel_capacity: usize,
     config_channel_capacity: usize,
     config_filter_limits: Arc<FilterLimits>,
@@ -342,7 +343,7 @@ pub struct GrpcService {
     replay_stored_slots_tx: Option<mpsc::Sender<ReplayStoredSlotsRequest>>,
     debug_clients_tx: Option<mpsc::UnboundedSender<DebugClientMessage>>,
     filter_names: Arc<Mutex<FilterNames>>,
-    raw_client_channels: Arc<RwLock<Vec<crossbeam_channel::Sender<Message>>>>,
+    raw_client_channels: Arc<RwLock<Vec<(u64, crossbeam_channel::Sender<Message>)>>>,
 }
 
 impl GrpcService {
@@ -351,7 +352,7 @@ impl GrpcService {
         config_tokio: ConfigTokio,
         config: ConfigGrpc,
         debug_clients_tx: Option<mpsc::UnboundedSender<DebugClientMessage>>,
-        raw_client_channels: Arc<RwLock<Vec<crossbeam_channel::Sender<Message>>>>,
+        raw_client_channels: Arc<RwLock<Vec<(u64, crossbeam_channel::Sender<Message>)>>>,
         is_reload: bool,
     ) -> anyhow::Result<(
         Option<crossbeam_channel::Sender<Box<Message>>>,
@@ -1153,67 +1154,81 @@ impl GrpcService {
             }
         }
     }
+}
 
-    #[allow(clippy::too_many_arguments)]
-    async fn client_loop_raw(
-        id: usize,
-        endpoint: String,
-        stream_tx: mpsc::Sender<TonicResult<(FilteredUpdate, Option<Message>)>>,
-        mut raw_message_rx: crossbeam_channel::Receiver<Message>,
-        drop_client: impl FnOnce(),
-    ) {
-        info!("client #{id}: new raw client");
-        metrics::connections_total_inc();
+pub struct CrossbeamReceiverStream {
+    inner: crossbeam_channel::Receiver<Message>,
+    raw_client_channels: Arc<RwLock<Vec<(u64, crossbeam_channel::Sender<Message>)>>>,
+    client_id: u64,
+}
 
-        loop {
-            match raw_message_rx.try_recv() {
-                Ok(message) => {
-                    // Convert raw Message to FilteredUpdate (skip all filtering)
-                    let filtered_update = match &message {
-                        Message::Account(msg) => FilteredUpdate::new_empty(
-                            FilteredUpdateOneof::account(msg, Default::default()),
-                        ),
-                        Message::Slot(msg) => {
-                            FilteredUpdate::new_empty(FilteredUpdateOneof::slot(msg.clone()))
-                        }
-                        Message::Transaction(msg) => {
-                            FilteredUpdate::new_empty(FilteredUpdateOneof::transaction(msg))
-                        }
-                        Message::Entry(msg) => {
-                            FilteredUpdate::new_empty(FilteredUpdateOneof::entry(Arc::clone(msg)))
-                        }
-                        Message::BlockMeta(msg) => FilteredUpdate::new_empty(
-                            FilteredUpdateOneof::block_meta(Arc::clone(msg)),
-                        ),
-                        _ => {
-                            unreachable!("will never receive block messages in raw mode")
-                        }
-                    };
+impl CrossbeamReceiverStream {
+    fn new(
+        inner: crossbeam_channel::Receiver<Message>,
+        raw_client_channels: Arc<RwLock<Vec<(u64, crossbeam_channel::Sender<Message>)>>>,
+        client_id: u64,
+    ) -> Self {
+        Self {
+            inner,
+            raw_client_channels,
+            client_id,
+        }
+    }
+}
 
-                    // Send to client stream
-                    match stream_tx.send(Ok((filtered_update, None))).await {
-                        Ok(()) => {}
-                        Err(mpsc::error::SendError(_)) => {
-                            error!("raw client #{id}: stream closed");
-                            break;
-                        }
-                    }
-                }
-                Err(crossbeam_channel::TryRecvError::Empty) => {
-                    // No messages available, yield briefly
-                    tokio::task::yield_now().await;
-                    continue;
-                }
-                Err(crossbeam_channel::TryRecvError::Disconnected) => {
-                    info!("raw client #{id}: channel disconnected");
-                    break;
-                }
+impl Drop for CrossbeamReceiverStream {
+    fn drop(&mut self) {
+        // Remove client from the vec by ID
+        if let Ok(mut raw_clients) = self.raw_client_channels.write() {
+            if let Some(pos) = raw_clients.iter().position(|(id, _)| *id == self.client_id) {
+                raw_clients.swap_remove(pos);
+                info!(
+                    "removed raw client {}, remaining: {}",
+                    self.client_id,
+                    raw_clients.len()
+                );
             }
         }
+    }
+}
 
-        metrics::connections_total_dec();
-        info!("raw client #{id}: removed");
-        drop_client();
+impl Stream for CrossbeamReceiverStream {
+    type Item = TonicResult<FilteredUpdate>;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        match self.inner.try_recv() {
+            Ok(message) => {
+                // TODO need to check this mapping is correct
+                // Convert raw Message to FilteredUpdate
+                let filtered_update = match &message {
+                    Message::Account(msg) => FilteredUpdate::new_empty(
+                        FilteredUpdateOneof::account(msg, Default::default()),
+                    ),
+                    Message::Slot(msg) => {
+                        FilteredUpdate::new_empty(FilteredUpdateOneof::slot(msg.clone()))
+                    }
+                    Message::Transaction(msg) => {
+                        FilteredUpdate::new_empty(FilteredUpdateOneof::transaction(msg))
+                    }
+                    Message::Entry(msg) => {
+                        FilteredUpdate::new_empty(FilteredUpdateOneof::entry(Arc::clone(msg)))
+                    }
+                    Message::BlockMeta(msg) => {
+                        FilteredUpdate::new_empty(FilteredUpdateOneof::block_meta(Arc::clone(msg)))
+                    }
+                    _ => {
+                        unreachable!("will never receive block messages in raw mode")
+                    }
+                };
+                Poll::Ready(Some(Ok(filtered_update)))
+            }
+            Err(crossbeam_channel::TryRecvError::Empty) => {
+                // No data available, wake up when more data might be available
+                cx.waker().wake_by_ref();
+                Poll::Pending
+            }
+            Err(crossbeam_channel::TryRecvError::Disconnected) => Poll::Ready(None),
+        }
     }
 }
 
@@ -1539,5 +1554,33 @@ impl Geyser for GrpcService {
         Ok(Response::new(GetVersionResponse {
             version: serde_json::to_string(&GrpcVersionInfo::default()).unwrap(),
         }))
+    }
+
+    type SubscribeRawStream = CrossbeamReceiverStream;
+
+    async fn subscribe_raw(
+        &self,
+        _request: Request<Streaming<SubscribeRequest>>,
+    ) -> TonicResult<Response<Self::SubscribeRawStream>> {
+        let (raw_message_tx, raw_message_rx) = crossbeam_channel::unbounded();
+
+        // Register raw client channel with unique ID
+        let client_id = self.subscribe_id.fetch_add(1, Ordering::Relaxed) as u64;
+        if let Ok(mut raw_clients) = self.raw_client_channels.write() {
+            raw_clients.push((client_id, raw_message_tx));
+            info!(
+                "registered raw client {}, total: {}",
+                client_id,
+                raw_clients.len()
+            );
+        } else {
+            return Err(Status::internal("failed to register raw client"));
+        }
+
+        Ok(Response::new(CrossbeamReceiverStream::new(
+            raw_message_rx,
+            self.raw_client_channels.clone(),
+            client_id,
+        )))
     }
 }
