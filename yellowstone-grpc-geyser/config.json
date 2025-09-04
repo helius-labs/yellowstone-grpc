@@ -87,5 +87,13 @@
   },
   "prometheus": {
     "address": "0.0.0.0:8999"
+  },
+  "clickhouse": {
+    "url": "127.0.0.1",
+    "user": "default",
+    "password": "password",
+    "database": "default",
+    "env": "local",
+    "host": "hostname"
   }
 }

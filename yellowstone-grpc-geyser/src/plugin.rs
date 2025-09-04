@@ -89,6 +89,12 @@ impl GeyserPlugin for Plugin {
 
         let (snapshot_channel, grpc_channel, grpc_shutdown, prometheus) =
             runtime.block_on(async move {
+                if let Some(config) = config.clickhouse {
+                    clickhouse_sink::init(config)
+                        .await
+                        .expect("Failed to setup clickhouse");
+                }
+
                 let (debug_client_tx, debug_client_rx) = mpsc::unbounded_channel();
                 let (snapshot_channel, grpc_channel, grpc_shutdown) = GrpcService::create(
                     config.tokio,
@@ -166,6 +172,9 @@ impl GeyserPlugin for Plugin {
                 if let Some(channel) = inner.snapshot_channel.lock().unwrap().as_ref() {
                     let message =
                         Message::Account(MessageAccount::from_geyser(account, slot, is_startup));
+
+                    clickhouse_sink::event::record(message.get_latency_payload("ys_geyser_recv"));
+
                     match channel.send(Box::new(message)) {
                         Ok(()) => metrics::message_queue_size_inc(),
                         Err(_) => {
@@ -180,6 +189,9 @@ impl GeyserPlugin for Plugin {
             } else {
                 let message =
                     Message::Account(MessageAccount::from_geyser(account, slot, is_startup));
+
+                clickhouse_sink::event::record(message.get_latency_payload("ys_geyser_recv"));
+
                 inner.send_message(message);
             }
 
@@ -202,6 +214,7 @@ impl GeyserPlugin for Plugin {
     ) -> PluginResult<()> {
         self.with_inner(|inner| {
             let message = Message::Slot(MessageSlot::from_geyser(slot, parent, status));
+            clickhouse_sink::event::record(message.get_latency_payload("ys_geyser_recv"));
             inner.send_message(message);
             metrics::update_slot_status(status, slot);
             Ok(())
@@ -226,7 +239,9 @@ impl GeyserPlugin for Plugin {
                 }
             };
 
-            inner.send_message(Message::Transaction(transaction));
+            let message = Message::Transaction(transaction);
+            clickhouse_sink::event::record(message.get_latency_payload("ys_geyser_recv"));
+            inner.send_message(message);
 
             Ok(())
         })
@@ -243,6 +258,7 @@ impl GeyserPlugin for Plugin {
             };
 
             let message = Message::Entry(Arc::new(MessageEntry::from_geyser(entry)));
+            clickhouse_sink::event::record(message.get_latency_payload("ys_geyser_recv"));
             inner.send_message(message);
 
             Ok(())
@@ -265,6 +281,7 @@ impl GeyserPlugin for Plugin {
             };
 
             let message = Message::BlockMeta(Arc::new(MessageBlockMeta::from_geyser(blockinfo)));
+            clickhouse_sink::event::record(message.get_latency_payload("ys_geyser_recv"));
             inner.send_message(message);
 
             Ok(())

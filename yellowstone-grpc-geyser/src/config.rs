@@ -26,6 +26,8 @@ pub struct Config {
     /// Collect client filters, processed slot and make it available on prometheus port `/debug_clients`
     #[serde(default)]
     pub debug_clients_http: bool,
+    #[serde(default)]
+    pub clickhouse: Option<clickhouse_sink::ClickhouseConfig>,
 }
 
 impl Config {
@@ -129,6 +131,17 @@ fn parse_taskset(taskset: &str) -> Result<Vec<usize>, String> {
     }
 
     Ok(vec)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_load_from_file() {
+        let config = Config::load_from_file("config.json").unwrap();
+        eprintln!("config = {:#?}", config);
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]

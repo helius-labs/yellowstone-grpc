@@ -367,20 +367,3 @@ pub fn missed_status_message_inc(status: SlotStatus) {
         .with_label_values(&[status.as_str()])
         .inc()
 }
-
-pub fn record_message_latency(message: &Message, stage: &'static str) {
-    let created_at = message.created_at();
-    let message_type = message.type_name();
-    record_message_latency_helper(created_at, stage, message_type);
-}
-
-pub fn record_message_latency_helper(
-    created_at: Timestamp,
-    stage: &'static str,
-    message_type: &'static str,
-) {
-    let latency = time_since_timestamp(created_at);
-    MESSAGE_RECEIVE_LATENCY
-        .with_label_values(&[stage, message_type])
-        .observe(latency);
-}
