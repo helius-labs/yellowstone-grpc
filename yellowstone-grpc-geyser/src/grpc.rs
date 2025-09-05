@@ -1379,7 +1379,7 @@ impl GrpcService {
             .unwrap_or_else(|| "".to_owned());
 
         let config_filter_limits = Arc::clone(&self.config_filter_limits);
-        let filter_names: Arc<Mutex<FilterNames>> = Arc::clone(&self.filter_names);
+        let filter_names = Arc::clone(&self.filter_names);
         let incoming_stream_tx = stream_tx.clone();
         let incoming_client_tx = client_tx;
         let incoming_exit = Arc::clone(&notify_exit2);

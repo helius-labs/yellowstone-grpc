@@ -4,13 +4,11 @@ use {
         grpc::GrpcService,
         metrics::{self, PrometheusService},
     },
-    ::metrics::set_global_recorder,
     agave_geyser_plugin_interface::geyser_plugin_interface::{
         GeyserPlugin, GeyserPluginError, ReplicaAccountInfoVersions, ReplicaBlockInfoVersions,
         ReplicaEntryInfoVersions, ReplicaTransactionInfoVersions, Result as PluginResult,
         SlotStatus,
     },
-    metrics_exporter_statsd::StatsdBuilder,
     std::{
         concat, env,
         sync::{
@@ -27,6 +25,11 @@ use {
         Message, MessageAccount, MessageBlockMeta, MessageEntry, MessageSlot, MessageTransaction,
     },
 };
+
+#[cfg(feature = "statsd")]
+use ::metrics::set_global_recorder;
+#[cfg(feature = "statsd")]
+use metrics_exporter_statsd::StatsdBuilder;
 
 #[derive(Debug)]
 pub struct PluginInner {
@@ -73,7 +76,6 @@ impl Plugin {
         let inner = self.inner.as_ref().expect("initialized");
         f(inner)
     }
-
 }
 
 impl GeyserPlugin for Plugin {
@@ -113,10 +115,10 @@ impl GeyserPlugin for Plugin {
                 }
 
                 let (debug_client_tx, debug_client_rx) = mpsc::unbounded_channel();
-                
+
                 // Create shared raw client channels
                 let raw_client_channels = Arc::new(RwLock::new(Vec::new()));
-                
+
                 let (snapshot_channel, grpc_channel, grpc_shutdown) = GrpcService::create(
                     config.tokio,
                     config.grpc,

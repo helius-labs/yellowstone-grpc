@@ -12,17 +12,13 @@ use {
         server::conn::auto::Builder as ServerBuilder,
     },
     log::{error, info},
-    prometheus::{
-        HistogramOpts, HistogramVec, IntCounterVec, IntGauge, IntGaugeVec, Opts, Registry,
-        TextEncoder,
-    },
-    prost_types::Timestamp,
+    prometheus::{HistogramOpts, HistogramVec, IntCounterVec, Opts, Registry, TextEncoder},
     solana_sdk::clock::Slot,
     std::{
         collections::{hash_map::Entry as HashMapEntry, HashMap},
         convert::Infallible,
         sync::{
-            atomic::{AtomicI64, AtomicUsize, Ordering},
+            atomic::{AtomicI64, Ordering},
             Arc, Once,
         },
     },
@@ -31,10 +27,7 @@ use {
         sync::{mpsc, oneshot, Notify},
         task::JoinHandle,
     },
-    yellowstone_grpc_proto::plugin::{
-        filter::Filter,
-        message::{time_since_timestamp, Message, SlotStatus},
-    },
+    yellowstone_grpc_proto::plugin::{filter::Filter, message::SlotStatus},
 };
 
 lazy_static::lazy_static! {
