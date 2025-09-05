@@ -12,10 +12,7 @@ use {
         server::conn::auto::Builder as ServerBuilder,
     },
     log::{error, info},
-    prometheus::{
-        IntCounterVec, Opts, Registry, TextEncoder,
-    },
-    prost_types::Timestamp,
+    prometheus::{HistogramOpts, HistogramVec, IntCounterVec, Opts, Registry, TextEncoder},
     solana_sdk::clock::Slot,
     std::{
         collections::{hash_map::Entry as HashMapEntry, HashMap},
@@ -30,12 +27,8 @@ use {
         sync::{mpsc, oneshot, Notify},
         task::JoinHandle,
     },
-    yellowstone_grpc_proto::plugin::{
-        filter::Filter,
-        message::{time_since_timestamp, Message, SlotStatus},
-    },
+    yellowstone_grpc_proto::plugin::{filter::Filter, message::SlotStatus},
 };
-use prometheus::{HistogramOpts, HistogramVec};
 
 lazy_static::lazy_static! {
     pub static ref REGISTRY: Registry = Registry::new();

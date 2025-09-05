@@ -1,0 +1,66 @@
+{
+  "libpath": "../target/release/libyellowstone_grpc_geyser.so",
+  "log": {
+    "level": "info"
+  },
+  "grpc": {
+    "address": "0.0.0.0:10000",
+    "compression": {
+      "accept": ["gzip"],
+      "send": ["gzip"]
+    },
+    "max_decoding_message_size": "4_194_304",
+    "snapshot_client_channel_capacity": "50_000_000",
+    "channel_capacity": "100_000",
+    "unary_concurrency_limit": 100,
+    "unary_disabled": false,
+    "x_token": null,
+    "replay_stored_slots": 0,
+    "filter_name_size_limit": 128,
+    "filter_names_size_limit": 4096,
+    "filter_names_cleanup_interval": "1s",
+    "filter_limits": {
+      "accounts": {
+        "max": 10,
+        "any": false,
+        "account_max": 100,
+        "owner_max": 100,
+        "data_slice_max": 10
+      },
+      "slots": {
+        "max": 10
+      },
+      "transactions": {
+        "max": 10,
+        "any": false,
+        "account_include_max": 100,
+        "account_exclude_max": 100,
+        "account_required_max": 100
+      },
+      "transactions_status": {
+        "max": 10,
+        "any": false,
+        "account_include_max": 100,
+        "account_exclude_max": 100,
+        "account_required_max": 100
+      },
+      "blocks": {
+        "max": 10,
+        "account_include_max": 100,
+        "account_include_any": false,
+        "include_transactions": true,
+        "include_accounts": false,
+        "include_entries": false
+      },
+      "blocks_meta": {
+        "max": 10
+      },
+      "entries": {
+        "max": 10
+      }
+    }
+  },
+  "prometheus": {
+    "address": "0.0.0.0:8999"
+  }
+}

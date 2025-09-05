@@ -16,6 +16,9 @@ crate-type = ["cdylib", "rlib"]
 [[bin]]
 name = "config-check"
 
+[[bin]]
+name = "grpc-server"
+
 [dependencies]
 affinity-linux = { workspace = true }
 metrics-exporter-statsd = { workspace = true }
@@ -45,7 +48,7 @@ solana-sdk = { workspace = true }
 solana-transaction-status = { workspace = true }
 spl-token-2022 = { workspace = true, features = ["no-entrypoint"] }
 thiserror = { workspace = true }
-tokio = { workspace = true, features = ["rt-multi-thread", "macros", "fs"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "fs", "signal"] }
 tokio-stream = { workspace = true }
 tonic = { workspace = true, features = ["gzip", "zstd", "tls", "tls-roots"] }
 tonic-health = { workspace = true }
