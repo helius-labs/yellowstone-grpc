@@ -26,6 +26,9 @@ use {
     },
 };
 
+#[cfg(feature = "statsd")]
+use {::metrics::set_global_recorder, metrics_exporter_statsd::StatsdBuilder};
+
 #[derive(Debug)]
 pub struct PluginInner {
     runtime: Runtime,
