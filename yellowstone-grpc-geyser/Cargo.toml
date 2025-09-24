@@ -18,7 +18,7 @@ name = "config-check"
 
 [dependencies]
 affinity-linux = { workspace = true }
-metrics-exporter-statsd = { workspace = true }
+metrics-exporter-statsd = { workspace = true, optional = true }
 agave-geyser-plugin-interface = { workspace = true }
 anyhow = { workspace = true }
 base64 = { workspace = true }
@@ -61,5 +61,5 @@ vergen = { workspace = true, features = ["build", "rustc"] }
 workspace = true
 
 [features]
-default = []
-statsd = ["metrics-exporter-statsd", "metrics"]
+default = ["statsd"]
+statsd = ["metrics-exporter-statsd"]
