@@ -16,6 +16,124 @@ The minor version will be incremented upon a breaking change and the patch versi
 
 ### Breaking
 
+## 2025-09-28
+
+- yellowstone-grpc-proto 9.0.1
+- yellowstone-grpc-client 9.0.1
+
+### Fixes
+
+- Removed all dependency version pinning at the workspace level for greater flexibility for users.
+
+## 2025-09-11
+
+- yellowstone-grpc-geyser-9.0.1
+
+### Fixes
+
+- Fixed unload in grpc geyser plugin.
+
+## 2025-08-04
+
+- yellowstone-grpc-geyser-9.0.0
+- yellowstone-grpc-client-simple-9.0.0
+- yellowstone-grpc-client-9.0.0
+- yellowstone-grpc-geyser-9.0.0
+- yellowstone-grpc-proto-9.0.0
+
+### Breaking
+
+- Upgaded to tonic 0.14.0 which can break customer code if they rely on tonic to do something else.
+
+## 2025-08-01
+
+- yellowstone-grpc-geyser-8.1.0
+
+### Features
+
+- geyser plugin exposes new metrics to measure subscriber performance such send/recv bandwidth load.
+- Added metrics to measure the amount of account update and sizes we are receiving from agave.
+
+## 2025-06-30
+
+- @triton-one/yellowstone-grpc@4.1.0
+- yellowstone-grpc-client-simple-8.0.0
+- yellowstone-grpc-client-8.0.0
+- yellowstone-grpc-geyser-8.0.0
+- yellowstone-grpc-proto-8.0.0
+
+### Features
+
+- geyser, plugin, proto: add the new proto proto parameter `cost_units` ([#598](https://github.com/rpcpool/yellowstone-grpc/pull/598))
+
+## 2025-06-01
+
+- @triton-one/yellowstone-grpc@4.1.0
+- yellowstone-grpc-client-simple-7.0.0
+- yellowstone-grpc-client-7.0.0
+- yellowstone-grpc-geyser-7.0.0
+- yellowstone-grpc-proto-7.0.0
+
+### Breaking
+
+- geyser, plugin, proto: remove deprecated `solana-sdk` dependency ([#590](https://github.com/rpcpool/yellowstone-grpc/pull/590))
+
+## 2025-05-01
+
+- @triton-one/yellowstone-grpc@4.1.0
+- yellowstone-grpc-client-simple-6.1.0
+- yellowstone-grpc-client-6.1.0
+- yellowstone-grpc-geyser-6.1.0
+- yellowstone-grpc-proto-6.1.0
+
+### Features
+
+- proto: add unary method `SubscribeReplayInfo` ([#578](https://github.com/rpcpool/yellowstone-grpc/pull/578))
+
+## 2025-03-17
+
+- yellowstone-grpc-client-simple-6.0.1
+
+### Fixes
+
+- client: fix `SlotStatus` ([#557](https://github.com/rpcpool/yellowstone-grpc/pull/557))
+
+## 2025-03-10
+
+- @triton-one/yellowstone-grpc@4.0.0
+- yellowstone-grpc-client-simple-6.0.0
+- yellowstone-grpc-client-6.0.0
+- yellowstone-grpc-geyser-6.0.0
+- yellowstone-grpc-proto-6.0.0
+
+### Breaking
+
+- geyser: upgrade to v2.2 ([#554](https://github.com/rpcpool/yellowstone-grpc/pull/554))
+
+## 2025-02-28
+
+- yellowstone-grpc-geyser-5.0.1
+
+### Fixes
+
+- geyser: deserialize config param `replay_stored_slots` from the `String` ([#541](https://github.com/rpcpool/yellowstone-grpc/pull/541))
+
+## 2025-02-06
+
+- @triton-one/yellowstone-grpc@3.0.0
+- yellowstone-grpc-client-simple-5.0.0
+- yellowstone-grpc-client-5.0.0
+- yellowstone-grpc-geyser-5.0.0
+- yellowstone-grpc-proto-5.0.0
+
+### Fixes
+
+- geyser: fix filter with followed ping ([#532](https://github.com/rpcpool/yellowstone-grpc/pull/532))
+
+### Breaking
+
+- proto: add enum `SlotStatus` ([#529](https://github.com/rpcpool/yellowstone-grpc/pull/529))
+
 ## 2025-02-05
 
 - yellowstone-grpc-client-simple-4.4.1
@@ -647,7 +765,7 @@ The minor version will be incremented upon a breaking change and the patch versi
 - tools: correctly handle SIGINT in kafka ([#219](https://github.com/rpcpool/yellowstone-grpc/pull/219))
 - geyser: use Ordering::Relaxed instead of SeqCst ([#221](https://github.com/rpcpool/yellowstone-grpc/pull/221))
 - proto: add optional field `ping` to `SubscribeRequest` ([#227](https://github.com/rpcpool/yellowstone-grpc/pull/227))
-- geyser: remove startup_status (allow reload plugin)  ([#230](https://github.com/rpcpool/yellowstone-grpc/pull/230))
+- geyser: remove startup_status (allow reload plugin) ([#230](https://github.com/rpcpool/yellowstone-grpc/pull/230))
 
 ### Features
 
