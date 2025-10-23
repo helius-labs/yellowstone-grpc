@@ -46,8 +46,8 @@ pub mod convert_to {
         super::prelude as proto,
         solana_sdk::{
             clock::UnixTimestamp,
-            instruction::CompiledInstruction,
             message::{
+                compiled_instruction::CompiledInstruction,
                 v0::{LoadedMessage, MessageAddressTableLookup},
                 LegacyMessage, MessageHeader, SanitizedMessage, VersionedMessage,
             },
@@ -116,7 +116,9 @@ pub mod convert_to {
             recent_blockhash: message.recent_blockhash().to_bytes().into(),
             instructions: create_instructions(&message.instructions()),
             versioned,
-            address_table_lookups: create_lookups(&message.address_table_lookups().unwrap_or_default()),
+            address_table_lookups: create_lookups(
+                &message.address_table_lookups().unwrap_or_default(),
+            ),
         }
     }
 
@@ -333,8 +335,8 @@ pub mod convert_from {
         solana_sdk::{
             account::Account,
             hash::{Hash, HASH_BYTES},
-            instruction::CompiledInstruction,
             message::{
+                compiled_instruction::CompiledInstruction,
                 v0::{LoadedAddresses, Message as MessageV0, MessageAddressTableLookup},
                 Message, MessageHeader, VersionedMessage,
             },
