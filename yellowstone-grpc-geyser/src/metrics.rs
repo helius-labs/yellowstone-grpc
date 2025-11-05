@@ -57,6 +57,14 @@ lazy_static::lazy_static! {
         "message_queue_size", "Size of geyser message queue"
     ).unwrap();
 
+    static ref SNAPSHOT_QUEUE_SIZE: IntGauge = IntGauge::new(
+        "snapshot_queue_size", "Size of snapshot queue during startup"
+    ).unwrap();
+
+    static ref CLIENT_STREAM_QUEUE_SIZE_TOTAL: IntGauge = IntGauge::new(
+        "client_stream_queue_size_total", "Total size of client stream queues"
+    ).unwrap();
+
     static ref CONNECTIONS_TOTAL: IntGauge = IntGauge::new(
         "connections_total", "Total number of connections to gRPC service"
     ).unwrap();
@@ -424,6 +432,18 @@ pub fn message_queue_size_inc() {
 
 pub fn message_queue_size_dec() {
     MESSAGE_QUEUE_SIZE.dec()
+}
+
+pub fn snapshot_queue_size_inc() {
+    SNAPSHOT_QUEUE_SIZE.inc();
+}
+
+pub fn snapshot_queue_size_dec() {
+    SNAPSHOT_QUEUE_SIZE.dec();
+}
+
+pub fn client_stream_queue_size_set(size: usize) {
+    CLIENT_STREAM_QUEUE_SIZE_TOTAL.set(size as i64);
 }
 
 pub fn connections_total_inc() {

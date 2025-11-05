@@ -1193,7 +1193,7 @@ impl GrpcService {
             }
             let message = match snapshot_rx.try_recv() {
                 Ok(message) => {
-                    metrics::message_queue_size_dec();
+                    metrics::snapshot_queue_size_dec();
                     message
                 }
                 Err(crossbeam_channel::TryRecvError::Empty) => {
@@ -1255,6 +1255,22 @@ impl Geyser for GrpcService {
             client_stats_settigns,
         );
         let (client_tx, client_rx) = mpsc::unbounded_channel();
+
+        // Monitor queue depth for snapshot clients
+        if snapshot_rx.is_some() {
+            let tx = stream_tx.clone();
+            let cancel = client_cancelation_token.child_token();
+            let cap = self.config_snapshot_client_channel_capacity;
+            self.task_tracker.spawn(async move {
+                let mut interval = tokio::time::interval(Duration::from_millis(100));
+                loop {
+                    tokio::select! {
+                        _ = cancel.cancelled() => { metrics::client_stream_queue_size_set(0); break; }
+                        _ = interval.tick() => metrics::client_stream_queue_size_set(cap.saturating_sub(tx.capacity())),
+                    }
+                }
+            });
+        }
 
         let ping_stream_tx = stream_tx.clone();
         let ping_client_tx = client_tx.clone();
