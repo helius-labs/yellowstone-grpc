@@ -8,6 +8,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 **Note:** Version 0 of Semantic Versioning is handled differently from version 1 and above.
 The minor version will be incremented upon a breaking change and the patch version will be incremented for features.
 
+## 3.0.7 (2025-11-05)
+
+
+### Features
+
+* [#115](https://github.com/helius-labs/yellowstone-grpc/issues/115) ([#116](https://github.com/helius-labs/yellowstone-grpc/issues/116)) ([4cbb353](https://github.com/helius-labs/yellowstone-grpc/commit/4cbb353be32ca0a9f735d33ab336eee160555d84))
+* [#48](https://github.com/helius-labs/yellowstone-grpc/issues/48) ([#56](https://github.com/helius-labs/yellowstone-grpc/issues/56)) ([19073fa](https://github.com/helius-labs/yellowstone-grpc/commit/19073fa1dd101ce5b6dc792edce301bfe7a37584))
+* add ping,get_latest_blockhash,get_block_height,get_slot for yellowstone-grpc-client ([02a94d9](https://github.com/helius-labs/yellowstone-grpc/commit/02a94d926a7100c6daeada771378e49ff614023c))
+* agave 3.0 dependency upgrades, ci fixes, version bumps, changelog ([#624](https://github.com/helius-labs/yellowstone-grpc/issues/624)) ([f3d5e04](https://github.com/helius-labs/yellowstone-grpc/commit/f3d5e041c427f0f383b520c44b231c851d324ddc))
+
+
+### Bug Fixes
+
+* allow optional x-token in rust client ([#72](https://github.com/helius-labs/yellowstone-grpc/issues/72)) ([c4487d8](https://github.com/helius-labs/yellowstone-grpc/commit/c4487d891cce308641b5a8c23c574c3150cca39b))
+* client example default to filter default (None, false...) rather than a given value ([#604](https://github.com/helius-labs/yellowstone-grpc/issues/604)) ([fd1e5dd](https://github.com/helius-labs/yellowstone-grpc/commit/fd1e5dd37bb0346f353c6f7522b184aa103c1bd3))
+* Slot update message now handles levels missing from CommitmentLevel ([#557](https://github.com/helius-labs/yellowstone-grpc/issues/557)) ([bb3a44a](https://github.com/helius-labs/yellowstone-grpc/commit/bb3a44a2f723fb1885eb70a1d1efcab44e8ac32f))
+* **slot_messages:** handle lower write_version by dropping messages ([#616](https://github.com/helius-labs/yellowstone-grpc/issues/616)) ([bbc90f3](https://github.com/helius-labs/yellowstone-grpc/commit/bbc90f375606fb3a2e53a6095570fede4b967687))
+
+
+### Miscellaneous Chores
+
+* bootstrap semantic release ([f05cde6](https://github.com/helius-labs/yellowstone-grpc/commit/f05cde66ec4dd0a2a6af76d53e36d0c9bd18c44e))
+
 ## [Unreleased]
 
 ### Fixes
