@@ -150,4 +150,4 @@ You can see in the rust example how to reply to the ping from the server with th
 
 ## Release
 
-Uses google's release please
+Uses google's release please for automatic release
