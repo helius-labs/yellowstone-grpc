@@ -147,3 +147,7 @@ You can see in the rust example how to reply to the ping from the server with th
 ### Projects based on Geyser gRPC
 
 - https://github.com/rpcpool/yellowstone-grpc-kafka — forward gRPC stream to Kafka, dedup, read stream from Kafka with gRPC server
+
+## Release
+
+Uses google's release please
