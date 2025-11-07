@@ -939,6 +939,7 @@ impl GrpcService {
         });
         info!("client #{id}: new");
 
+        let mut just_finished_snapshot = false;
         if let Some(snapshot_rx) = snapshot_rx.take() {
             info!("client #{id}: snapshot requested");
             let result = Self::client_loop_snapshot(
@@ -954,6 +955,7 @@ impl GrpcService {
             match result {
                 Ok(()) => {
                     info!("client #{id}: snapshot stream ended");
+                    just_finished_snapshot = true;
                 }
                 Err(ClientSnapshotReplayError::Cancelled) => {
                     let _ = stream_tx.try_send(Err(Status::internal(
@@ -982,7 +984,7 @@ impl GrpcService {
             );
 
             set_subscriber_queue_size(&subscriber_id, stream_tx.queue_size());
-            metrics::client_stream_queue_size_set(stream_tx.queue_size() as usize);
+            metrics::client_stream_subscriber_queue_size_set(stream_tx.queue_size() as usize);
 
             tokio::select! {
                 _ = cancellation_token.cancelled() => {
@@ -1097,7 +1099,17 @@ impl GrpcService {
                         for (_msgid, message) in messages.iter() {
                             for message in filter.get_updates(message, Some(commitment)) {
                                 let proto_size = message.encoded_len().min(u32::MAX as usize) as u32;
-                                match stream_tx.try_send(Ok(message)) {
+
+                                // Use blocking send() for snapshot clients draining backlog, try_send() for others
+                                let send_result = if just_finished_snapshot {
+                                    // Blocking send to drain broadcast backlog slowly
+                                    stream_tx.send(Ok(message)).await.map_err(|e| mpsc::error::TrySendError::Closed(e.0))
+                                } else {
+                                    // Non-blocking for regular clients
+                                    stream_tx.try_send(Ok(message))
+                                };
+
+                                match send_result {
                                     Ok(()) => {
                                         metrics::incr_grpc_message_sent_counter(&subscriber_id);
                                         metrics::incr_grpc_bytes_sent(&subscriber_id, proto_size);
@@ -1122,6 +1134,15 @@ impl GrpcService {
                                 }
                             }
                         }
+
+                        // After first batch with blocking send, switch back to try_send
+                        if just_finished_snapshot {
+                            let queue_size = stream_tx.queue_size();
+                            if queue_size < 100_000 {
+                                info!("client #{id}: broadcast backlog drained (queue: {}), switching to try_send", queue_size);
+                                just_finished_snapshot = false;
+                            }
+                        }
                     } else {
                         stream_tx.no_load();
                     }
@@ -1139,7 +1160,7 @@ impl GrpcService {
         set_subscriber_recv_bandwidth_load(&subscriber_id, 0);
         set_subscriber_send_bandwidth_load(&subscriber_id, 0);
         set_subscriber_queue_size(&subscriber_id, 0);
-        metrics::client_stream_queue_size_set(0);
+        metrics::client_stream_subscriber_queue_size_set(0);
 
         metrics::connections_total_dec();
         DebugClientMessage::maybe_send(&debug_client_tx, || DebugClientMessage::Removed { id });
