@@ -982,6 +982,7 @@ impl GrpcService {
             );
 
             set_subscriber_queue_size(&subscriber_id, stream_tx.queue_size());
+            CLIENT_STREAM_SUBSCRIBER_QUEUE_SIZE.set(stream_tx.queue_size() as i64);
 
             tokio::select! {
                 _ = cancellation_token.cancelled() => {
@@ -1102,7 +1103,13 @@ impl GrpcService {
                                         metrics::incr_grpc_bytes_sent(&subscriber_id, proto_size);
                                     }
                                     Err(mpsc::error::TrySendError::Full(_)) => {
-                                        error!("client #{id}: lagged to send an update");
+                                        let queue_size = stream_tx.queue_size();
+                                        let send_rate = stream_tx.estimated_send_rate().per_second();
+                                        let recv_rate = stream_tx.estimated_consuming_rate().per_second();
+                                        error!(
+                                            "client #{id}: lagged to send an update - queue_size: {}, send_rate: {} bytes/s, recv_rate: {} bytes/s, subscriber_id: {}",
+                                            queue_size, send_rate, recv_rate, subscriber_id
+                                        );
                                         task_tracker.spawn(async move {
                                             let _ = stream_tx.send(Err(Status::internal("lagged to send an update"))).await;
                                         });
@@ -1132,6 +1139,7 @@ impl GrpcService {
         set_subscriber_recv_bandwidth_load(&subscriber_id, 0);
         set_subscriber_send_bandwidth_load(&subscriber_id, 0);
         set_subscriber_queue_size(&subscriber_id, 0);
+        CLIENT_STREAM_SUBSCRIBER_QUEUE_SIZE.set(0);
 
         metrics::connections_total_dec();
         DebugClientMessage::maybe_send(&debug_client_tx, || DebugClientMessage::Removed { id });

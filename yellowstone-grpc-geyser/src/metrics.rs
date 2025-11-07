@@ -65,6 +65,10 @@ lazy_static::lazy_static! {
         "client_stream_queue_size_total", "Total size of client stream queues"
     ).unwrap();
 
+    static ref CLIENT_STREAM_SUBSCRIBER_QUEUE_SIZE: IntGauge = IntGauge::new(
+        "client_stream_subscriber_queue_size", "Size of client stream subscriber queue"
+    ).unwrap();
+
     static ref CONNECTIONS_TOTAL: IntGauge = IntGauge::new(
         "connections_total", "Total number of connections to gRPC service"
     ).unwrap();
@@ -432,18 +436,6 @@ pub fn message_queue_size_inc() {
 
 pub fn message_queue_size_dec() {
     MESSAGE_QUEUE_SIZE.dec()
-}
-
-pub fn snapshot_queue_size_inc() {
-    SNAPSHOT_QUEUE_SIZE.inc();
-}
-
-pub fn snapshot_queue_size_dec() {
-    SNAPSHOT_QUEUE_SIZE.dec();
-}
-
-pub fn client_stream_queue_size_set(size: usize) {
-    CLIENT_STREAM_QUEUE_SIZE_TOTAL.set(size as i64);
 }
 
 pub fn connections_total_inc() {
