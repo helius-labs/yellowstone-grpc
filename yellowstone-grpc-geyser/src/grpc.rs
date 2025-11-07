@@ -982,7 +982,7 @@ impl GrpcService {
             );
 
             set_subscriber_queue_size(&subscriber_id, stream_tx.queue_size());
-            CLIENT_STREAM_SUBSCRIBER_QUEUE_SIZE.set(stream_tx.queue_size() as i64);
+            metrics::client_stream_queue_size_set(stream_tx.queue_size() as usize);
 
             tokio::select! {
                 _ = cancellation_token.cancelled() => {
@@ -1139,7 +1139,7 @@ impl GrpcService {
         set_subscriber_recv_bandwidth_load(&subscriber_id, 0);
         set_subscriber_send_bandwidth_load(&subscriber_id, 0);
         set_subscriber_queue_size(&subscriber_id, 0);
-        CLIENT_STREAM_SUBSCRIBER_QUEUE_SIZE.set(0);
+        metrics::client_stream_queue_size_set(0);
 
         metrics::connections_total_dec();
         DebugClientMessage::maybe_send(&debug_client_tx, || DebugClientMessage::Removed { id });

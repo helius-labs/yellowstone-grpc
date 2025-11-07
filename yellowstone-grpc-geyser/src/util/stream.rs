@@ -199,6 +199,10 @@ where
     pub fn queue_size(&self) -> u64 {
         self.shared.queue_size.load(Ordering::Relaxed)
     }
+
+    pub fn capacity(&self) -> usize {
+        self.inner.capacity()
+    }
 }
 
 ///

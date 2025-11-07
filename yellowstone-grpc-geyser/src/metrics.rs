@@ -269,6 +269,8 @@ impl PrometheusService {
             register!(SLOT_STATUS_PLUGIN);
             register!(INVALID_FULL_BLOCKS);
             register!(MESSAGE_QUEUE_SIZE);
+            register!(SNAPSHOT_QUEUE_SIZE);
+            register!(CLIENT_STREAM_QUEUE_SIZE_TOTAL);
             register!(CONNECTIONS_TOTAL);
             register!(SUBSCRIPTIONS_TOTAL);
             register!(MISSED_STATUS_MESSAGE);
@@ -436,6 +438,18 @@ pub fn message_queue_size_inc() {
 
 pub fn message_queue_size_dec() {
     MESSAGE_QUEUE_SIZE.dec()
+}
+
+pub fn snapshot_queue_size_inc() {
+    SNAPSHOT_QUEUE_SIZE.inc();
+}
+
+pub fn snapshot_queue_size_dec() {
+    SNAPSHOT_QUEUE_SIZE.dec();
+}
+
+pub fn client_stream_queue_size_set(size: usize) {
+    CLIENT_STREAM_QUEUE_SIZE_TOTAL.set(size as i64);
 }
 
 pub fn connections_total_inc() {
