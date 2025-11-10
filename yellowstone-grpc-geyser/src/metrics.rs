@@ -269,6 +269,9 @@ impl PrometheusService {
             register!(SLOT_STATUS_PLUGIN);
             register!(INVALID_FULL_BLOCKS);
             register!(MESSAGE_QUEUE_SIZE);
+            register!(SNAPSHOT_QUEUE_SIZE);
+            register!(CLIENT_STREAM_QUEUE_SIZE_TOTAL);
+            register!(CLIENT_STREAM_SUBSCRIBER_QUEUE_SIZE);
             register!(CONNECTIONS_TOTAL);
             register!(SUBSCRIPTIONS_TOTAL);
             register!(MISSED_STATUS_MESSAGE);
