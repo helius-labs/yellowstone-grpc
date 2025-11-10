@@ -19,7 +19,6 @@ use {
     log::{error, info},
     prost_types::Timestamp,
     solana_clock::{Slot, MAX_RECENT_BLOCKHASHES},
-    solana_pubkey::Pubkey,
     std::{
         collections::{BTreeMap, HashMap},
         sync::{
@@ -317,7 +316,6 @@ struct SlotMessages {
     messages_slots: Vec<(u64, Message)>,
     block_meta: Option<Arc<MessageBlockMeta>>,
     transactions: Vec<Arc<MessageTransactionInfo>>,
-    accounts_dedup: HashMap<Pubkey, (u64, usize)>, // (write_version, message_index)
     entries: Vec<Arc<MessageEntry>>,
     sealed: bool,
     entries_count: usize,
@@ -705,24 +703,9 @@ impl GrpcService {
                             slot_messages.transactions.push(Arc::clone(&msg.transaction));
                             sealed_block_msg = slot_messages.try_seal(&mut msgid_gen);
                         }
-                        // Dedup accounts by max write_version
+                        // No special handling needed anymore - accounts will be processed in order received
                         Message::Account(msg) => {
                             metrics::observe_geyser_account_update_received(msg.account.data.len());
-                            let write_version = msg.account.write_version;
-                            let msg_index = slot_messages.messages.len() - 1;
-                            if let Some(entry) = slot_messages.accounts_dedup.get_mut(&msg.account.pubkey) {
-                                if entry.0 < write_version {
-                                    // We can replace the message, but in this case we will lose the order
-                                    slot_messages.messages[entry.1] = None;
-                                    *entry = (write_version, msg_index);
-                                } else {
-                                    // If the new write_version is lower than the latest one, we need to drop this message
-                                    // because we would have more than 1 image in slot_messages.messages
-                                    slot_messages.messages[msg_index] = None;
-                                }
-                            } else {
-                                slot_messages.accounts_dedup.insert(msg.account.pubkey, (write_version, msg_index));
-                            }
                         }
                         Message::Entry(msg) => {
                             slot_messages.entries.push(Arc::clone(msg));
@@ -888,13 +871,13 @@ impl GrpcService {
                     let mut replayed_messages = Vec::with_capacity(32_768);
                     for (slot, messages) in messages.iter() {
                         if *slot >= replay_slot {
-                            replayed_messages.extend_from_slice(&messages.messages_slots);
                             if commitment == CommitmentLevel::Processed
                                 || (commitment == CommitmentLevel::Finalized && messages.finalized)
                                 || (commitment == CommitmentLevel::Confirmed && messages.confirmed)
                             {
                                 replayed_messages.extend(messages.messages.iter().filter_map(|v| v.clone()));
                             }
+                            replayed_messages.extend_from_slice(&messages.messages_slots);
                         }
                     }
                     let _ = tx.send(ReplayedResponse::Messages(replayed_messages));
