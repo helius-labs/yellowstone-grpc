@@ -13,7 +13,7 @@ use {
         concat, env,
         sync::{
             atomic::{AtomicBool, Ordering},
-            Arc, Mutex,
+            Arc, Mutex, RwLock,
         },
         time::Duration,
     },
@@ -33,12 +33,25 @@ pub struct PluginInner {
     snapshot_channel: Mutex<Option<crossbeam_channel::Sender<Box<Message>>>>,
     snapshot_channel_closed: AtomicBool,
     grpc_channel: mpsc::UnboundedSender<Message>,
+    raw_client_channels: Arc<RwLock<Vec<(u64, crossbeam_channel::Sender<Message>)>>>,
     plugin_cancellation_token: CancellationToken,
     plugin_task_tracker: TaskTracker,
 }
 
 impl PluginInner {
     fn send_message(&self, message: Message) {
+        if let Ok(raw_clients) = self.raw_client_channels.read() {
+            if !raw_clients.is_empty() {
+                for (id, tx) in raw_clients.iter() {
+                    if let Err(_) = tx.send(message.clone()) {
+                        // Channel disconnected, will be cleaned up later
+                        log::warn!("Raw client {} channel disconnected", id);
+                    }
+                }
+            }
+        }
+
+        // Then send to regular geyser_loop pipeline
         if self.grpc_channel.send(message).is_ok() {
             metrics::message_queue_size_inc();
         }
@@ -114,19 +127,23 @@ impl GeyserPlugin for Plugin {
             .await
             .map_err(|error| GeyserPluginError::Custom(Box::new(error)))?;
 
+            // Create shared raw client channels
+            let raw_client_channels = Arc::new(RwLock::new(Vec::new()));
+
             let (snapshot_channel, grpc_channel) = GrpcService::create(
                 config.grpc,
                 config.debug_clients_http.then_some(debug_client_tx),
+                raw_client_channels.clone(),
                 is_reload,
                 grpc_cancellation_token,
                 grpc_task_tracker,
             )
             .await
             .map_err(|error| GeyserPluginError::Custom(format!("{error:?}").into()))?;
-            Ok::<_, GeyserPluginError>((snapshot_channel, grpc_channel))
+            Ok::<_, GeyserPluginError>((snapshot_channel, grpc_channel, raw_client_channels))
         });
 
-        let (snapshot_channel, grpc_channel) = result.inspect_err(|e| {
+        let (snapshot_channel, grpc_channel, raw_client_channels) = result.inspect_err(|e| {
             log::error!("failed to start plugin services: {e}");
             plugin_cancellation_token.cancel();
         })?;
@@ -136,6 +153,7 @@ impl GeyserPlugin for Plugin {
             snapshot_channel: Mutex::new(snapshot_channel),
             snapshot_channel_closed: AtomicBool::new(false),
             grpc_channel,
+            raw_client_channels,
             plugin_cancellation_token,
             plugin_task_tracker,
         });

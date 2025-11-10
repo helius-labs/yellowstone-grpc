@@ -16,15 +16,18 @@ use {
         version::GrpcVersionInfo,
     },
     anyhow::Context,
+    futures::{task::Context as TaskContext, Stream},
     log::{error, info},
     prost_types::Timestamp,
     solana_clock::{Slot, MAX_RECENT_BLOCKHASHES},
     std::{
         collections::{BTreeMap, HashMap},
+        pin::Pin,
         sync::{
             atomic::{AtomicU64, AtomicUsize, Ordering},
-            Arc,
+            Arc, RwLock as RwLockStd,
         },
+        task::Poll,
         time::SystemTime,
     },
     tokio::{
@@ -401,6 +404,7 @@ pub struct GrpcService {
     replay_first_available_slot: Option<Arc<AtomicU64>>,
     debug_clients_tx: Option<mpsc::UnboundedSender<DebugClientMessage>>,
     filter_names: Arc<Mutex<FilterNames>>,
+    raw_client_channels: Arc<RwLockStd<Vec<(u64, crossbeam_channel::Sender<Message>)>>>,
     cancellation_token: CancellationToken,
     task_tracker: TaskTracker,
 }
@@ -410,6 +414,7 @@ impl GrpcService {
     pub async fn create(
         config: ConfigGrpc,
         debug_clients_tx: Option<mpsc::UnboundedSender<DebugClientMessage>>,
+        raw_client_channels: Arc<RwLockStd<Vec<(u64, crossbeam_channel::Sender<Message>)>>>,
         is_reload: bool,
         service_cancellation_token: CancellationToken,
         task_tracker: TaskTracker,
@@ -503,6 +508,7 @@ impl GrpcService {
             replay_first_available_slot: replay_first_available_slot.clone(),
             debug_clients_tx,
             filter_names,
+            raw_client_channels,
             cancellation_token: service_cancellation_token.clone(),
             task_tracker: task_tracker.clone(),
         })
@@ -1201,9 +1207,96 @@ impl GrpcService {
     }
 }
 
+pub struct CrossbeamReceiverStream {
+    inner: crossbeam_channel::Receiver<Message>,
+    raw_client_channels: Arc<RwLockStd<Vec<(u64, crossbeam_channel::Sender<Message>)>>>,
+    client_id: u64,
+}
+
+impl CrossbeamReceiverStream {
+    fn new(
+        inner: crossbeam_channel::Receiver<Message>,
+        raw_client_channels: Arc<RwLockStd<Vec<(u64, crossbeam_channel::Sender<Message>)>>>,
+        client_id: u64,
+    ) -> Self {
+        Self {
+            inner,
+            raw_client_channels,
+            client_id,
+        }
+    }
+}
+
+impl Drop for CrossbeamReceiverStream {
+    fn drop(&mut self) {
+        // Remove client from the vec by ID
+        if let Ok(mut raw_clients) = self.raw_client_channels.write() {
+            if let Some(pos) = raw_clients.iter().position(|(id, _)| *id == self.client_id) {
+                raw_clients.swap_remove(pos);
+                info!(
+                    "removed raw client {}, remaining: {}",
+                    self.client_id,
+                    raw_clients.len()
+                );
+            }
+        }
+    }
+}
+
+impl Stream for CrossbeamReceiverStream {
+    type Item = TonicResult<FilteredUpdate>;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut TaskContext<'_>) -> Poll<Option<Self::Item>> {
+        const MAX_QUEUE_SIZE: usize = 1_000_000;
+
+        if self.inner.len() > MAX_QUEUE_SIZE {
+            info!(
+                "Raw client {} queue too large ({}), disconnecting",
+                self.client_id,
+                self.inner.len()
+            );
+            return Poll::Ready(None);
+        }
+
+        match self.inner.try_recv() {
+            Ok(message) => {
+                // Convert raw Message to FilteredUpdate
+                let filtered_update = match &message {
+                    Message::Account(msg) => FilteredUpdate::new_empty(
+                        FilteredUpdateOneof::account(msg, Default::default()),
+                    ),
+                    Message::Slot(msg) => {
+                        FilteredUpdate::new_empty(FilteredUpdateOneof::slot(msg.clone()))
+                    }
+                    Message::Transaction(msg) => {
+                        FilteredUpdate::new_empty(FilteredUpdateOneof::transaction(msg))
+                    }
+                    Message::Entry(msg) => {
+                        FilteredUpdate::new_empty(FilteredUpdateOneof::entry(Arc::clone(msg)))
+                    }
+                    Message::BlockMeta(msg) => {
+                        FilteredUpdate::new_empty(FilteredUpdateOneof::block_meta(Arc::clone(msg)))
+                    }
+                    _ => {
+                        unreachable!("will never receive block messages in raw mode")
+                    }
+                };
+                Poll::Ready(Some(Ok(filtered_update)))
+            }
+            Err(crossbeam_channel::TryRecvError::Empty) => {
+                // No data available, wake up when more data might be available
+                cx.waker().wake_by_ref();
+                Poll::Pending
+            }
+            Err(crossbeam_channel::TryRecvError::Disconnected) => Poll::Ready(None),
+        }
+    }
+}
+
 #[tonic::async_trait]
 impl Geyser for GrpcService {
     type SubscribeStream = LoadAwareReceiver<TonicResult<FilteredUpdate>>;
+    type SubscribeRawStream = CrossbeamReceiverStream;
 
     async fn subscribe(
         &self,
@@ -1360,6 +1453,32 @@ impl Geyser for GrpcService {
                 .map(|stored| stored.load(Ordering::Relaxed)),
         };
         Ok(Response::new(response))
+    }
+
+    async fn subscribe_raw(
+        &self,
+        _request: Request<Streaming<SubscribeRequest>>,
+    ) -> TonicResult<Response<Self::SubscribeRawStream>> {
+        let (raw_message_tx, raw_message_rx) = crossbeam_channel::unbounded();
+
+        // Register raw client channel with unique ID
+        let client_id = self.subscribe_id.fetch_add(1, Ordering::Relaxed) as u64;
+        if let Ok(mut raw_clients) = self.raw_client_channels.write() {
+            raw_clients.push((client_id, raw_message_tx));
+            info!(
+                "registered raw client {}, total: {}",
+                client_id,
+                raw_clients.len()
+            );
+        } else {
+            return Err(Status::internal("failed to register raw client"));
+        }
+
+        Ok(Response::new(CrossbeamReceiverStream::new(
+            raw_message_rx,
+            self.raw_client_channels.clone(),
+            client_id,
+        )))
     }
 
     async fn ping(&self, request: Request<PingRequest>) -> Result<Response<PongResponse>, Status> {
