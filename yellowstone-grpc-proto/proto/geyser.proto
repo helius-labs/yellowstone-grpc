@@ -9,7 +9,7 @@ package geyser;
 
 service Geyser {
   rpc Subscribe(stream SubscribeRequest) returns (stream SubscribeUpdate) {}
-  rpc SubscriberUnconfirmed(stream SubscribeUnconfirmedRequest) returns (stream SubscribeUncomfirmedUpdate) {}
+  rpc SubscribePreprocessed(stream SubscribePreprocessedRequest) returns (stream SubscribePreprocessedUpdate) {}
   rpc SubscribeReplayInfo(SubscribeReplayInfoRequest) returns (SubscribeReplayInfoResponse) {}
   rpc Ping(PingRequest) returns (PongResponse) {}
   rpc GetLatestBlockhash(GetLatestBlockhashRequest) returns (GetLatestBlockhashResponse) {}
@@ -19,14 +19,14 @@ service Geyser {
   rpc GetVersion(GetVersionRequest) returns (GetVersionResponse) {}
 }
 
-// Subscriptions to unconfirmed transactions
-message SubscribeUnconfirmedRequest {
-  map<string, SubscribeUnconfirmedRequestFilterTransactions> transactions = 3;
-  optional SubscribeRequestPing ping = 4;
+// Subscriptions to Preprocessed transactions
+message SubscribePreprocessedRequest {
+  map<string, SubscribePreprocessedRequestFilterTransactions> transactions = 1;
+  optional SubscribePreprocessedRequestPing ping = 2;
 
 }
 
-message SubscribeUnconfirmedRequestFilterTransactions {
+message SubscribePreprocessedRequestFilterTransactions {
   optional bool vote = 1;
   optional string signature = 2;
   repeated string account_include = 3;
@@ -34,29 +34,24 @@ message SubscribeUnconfirmedRequestFilterTransactions {
   repeated string account_required = 5;
 }
 
-message SubscribeUncomfirmedUpdate {
+message SubscribePreprocessedUpdate {
   repeated string filters = 1;
   oneof update_oneof {
-    SubscribeUnconfirmedFilterEntry entry = 2;
-    SubscribeUnconfirmedTransaction transaction = 3;
-    SubscribeUpdatePing ping = 4;
-    SubscribeUpdatePong pong = 5;
+    SubscribePreprocessedTransaction transaction = 2;
+    SubscribeUpdatePing ping = 3;
+    SubscribeUpdatePong pong = 4;
   }
-  google.protobuf.Timestamp created_at = 6;
+  google.protobuf.Timestamp created_at = 5;
 }
 
-message SubscribeUnconfirmedFilterEntry { }
-
-message SubscribeUnconfirmedTransaction {
-  SubscribeUnconfirmedTransactionInfo transaction = 1;
+message SubscribePreprocessedTransaction {
+  SubscribePreprocessedTransactionInfo transaction = 1;
   uint64 slot = 2;
 }
 
-message SubscribeUnconfirmedTransactionInfo {
+message SubscribePreprocessedTransactionInfo {
   bytes signature = 1;
   bool is_vote = 2;
-  // This is really strange naming for this type
-  // should we just remove this type here and add a separate Transaction type?
   solana.storage.ConfirmedBlock.Transaction transaction = 3;
 }
 
