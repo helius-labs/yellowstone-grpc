@@ -22,27 +22,30 @@ service Geyser {
 // Subscriptions to unconfirmed transactions
 message SubscribeUnconfirmedRequest {
   map<string, SubscribeUnconfirmedRequestFilterTransactions> transactions = 3;
+  optional SubscribeRequestPing ping = 4;
 
 }
 
 message SubscribeUnconfirmedRequestFilterTransactions {
   optional bool vote = 1;
-  optional string signature = 4;
-  repeated string account_include = 2;
-  repeated string account_exclude = 3;
+  optional string signature = 2;
+  repeated string account_include = 3;
+  repeated string account_exclude = 4;
   repeated string account_required = 5;
 }
 
 message SubscribeUncomfirmedUpdate {
   repeated string filters = 1;
   oneof update_oneof {
-    // TODO: Add entries 
+    SubscribeUnconfirmedFilterEntry entry = 1;
     SubscribeUnconfirmedTransaction transaction = 2;
     SubscribeUpdatePing ping = 3;
     SubscribeUpdatePong pong = 4;
   }
   google.protobuf.Timestamp created_at = 5;
 }
+
+message SubscribeUnconfirmedFilterEntry { }
 
 message SubscribeUnconfirmedTransaction {
   SubscribeUnconfirmedTransactionInfo transaction = 1;
