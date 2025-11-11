@@ -22,7 +22,7 @@ service Geyser {
 // Subscriptions to Preprocessed transactions
 message SubscribePreprocessedRequest {
   map<string, SubscribePreprocessedRequestFilterTransactions> transactions = 1;
-  optional SubscribePreprocessedRequestPing ping = 2;
+  optional SubscribeRequestPing ping = 2;
 
 }
 
