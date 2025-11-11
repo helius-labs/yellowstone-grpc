@@ -37,12 +37,12 @@ message SubscribeUnconfirmedRequestFilterTransactions {
 message SubscribeUncomfirmedUpdate {
   repeated string filters = 1;
   oneof update_oneof {
-    SubscribeUnconfirmedFilterEntry entry = 1;
-    SubscribeUnconfirmedTransaction transaction = 2;
-    SubscribeUpdatePing ping = 3;
-    SubscribeUpdatePong pong = 4;
+    SubscribeUnconfirmedFilterEntry entry = 2
+    SubscribeUnconfirmedTransaction transaction = 3;
+    SubscribeUpdatePing ping = 4;
+    SubscribeUpdatePong pong = 5;
   }
-  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp created_at = 6;
 }
 
 message SubscribeUnconfirmedFilterEntry { }
