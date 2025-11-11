@@ -811,8 +811,11 @@ impl GrpcService {
 
                             // processed
                             processed_messages.push(message.clone());
+                            let processed_count = processed_messages.len();
                             let _ =
                                 broadcast_tx.send((CommitmentLevel::Processed, processed_messages.into()));
+                            metrics::broadcast_queue_size_add(processed_count as i64);
+                            metrics::broadcast_messages_sent_inc("processed");
                             processed_messages = Vec::with_capacity(PROCESSED_MESSAGES_MAX);
                             processed_sleep
                                 .as_mut()
@@ -820,13 +823,19 @@ impl GrpcService {
 
                             // confirmed
                             confirmed_messages.push(message.clone());
+                            let confirmed_count = confirmed_messages.len();
                             let _ =
                                 broadcast_tx.send((CommitmentLevel::Confirmed, confirmed_messages.into()));
+                            metrics::broadcast_queue_size_add(confirmed_count as i64);
+                            metrics::broadcast_messages_sent_inc("confirmed");
 
                             // finalized
                             finalized_messages.push(message);
+                            let finalized_count = finalized_messages.len();
                             let _ =
                                 broadcast_tx.send((CommitmentLevel::Finalized, finalized_messages.into()));
+                            metrics::broadcast_queue_size_add(finalized_count as i64);
+                            metrics::broadcast_messages_sent_inc("finalized");
                         } else {
                             let mut confirmed_messages = vec![];
                             let mut finalized_messages = vec![];
@@ -850,8 +859,13 @@ impl GrpcService {
                                 || !confirmed_messages.is_empty()
                                 || !finalized_messages.is_empty()
                             {
+                                let processed_count = processed_messages.len();
                                 let _ = broadcast_tx
                                     .send((CommitmentLevel::Processed, processed_messages.into()));
+                                if processed_count > 0 {
+                                    metrics::broadcast_queue_size_add(processed_count as i64);
+                                    metrics::broadcast_messages_sent_inc("processed");
+                                }
                                 processed_messages = Vec::with_capacity(PROCESSED_MESSAGES_MAX);
                                 processed_sleep
                                     .as_mut()
@@ -859,20 +873,29 @@ impl GrpcService {
                             }
 
                             if !confirmed_messages.is_empty() {
+                                let confirmed_count = confirmed_messages.len();
                                 let _ =
                                     broadcast_tx.send((CommitmentLevel::Confirmed, confirmed_messages.into()));
+                                metrics::broadcast_queue_size_add(confirmed_count as i64);
+                                metrics::broadcast_messages_sent_inc("confirmed");
                             }
 
                             if !finalized_messages.is_empty() {
+                                let finalized_count = finalized_messages.len();
                                 let _ =
                                     broadcast_tx.send((CommitmentLevel::Finalized, finalized_messages.into()));
+                                metrics::broadcast_queue_size_add(finalized_count as i64);
+                                metrics::broadcast_messages_sent_inc("finalized");
                             }
                         }
                     }
                 }
                 () = &mut processed_sleep => {
                     if !processed_messages.is_empty() {
+                        let processed_count = processed_messages.len();
                         let _ = broadcast_tx.send((CommitmentLevel::Processed, processed_messages.into()));
+                        metrics::broadcast_queue_size_add(processed_count as i64);
+                        metrics::broadcast_messages_sent_inc("processed");
                         processed_messages = Vec::with_capacity(PROCESSED_MESSAGES_MAX);
                     }
                     processed_sleep.as_mut().reset(Instant::now() + PROCESSED_MESSAGES_SLEEP);
@@ -1118,12 +1141,17 @@ impl GrpcService {
                 }
                 message = messages_rx.recv() => {
                     let (commitment, messages) = match message {
-                        Ok((commitment, messages)) => (commitment, messages),
+                        Ok((commitment, messages)) => {
+                            // Decrement broadcast queue for consumed messages
+                            metrics::broadcast_queue_size_add(-(messages.len() as i64));
+                            (commitment, messages)
+                        },
                         Err(broadcast::error::RecvError::Closed) => {
                             break 'outer;
                         },
-                        Err(broadcast::error::RecvError::Lagged(_)) => {
-                            info!("client #{id}: lagged to receive geyser messages");
+                        Err(broadcast::error::RecvError::Lagged(skipped)) => {
+                            info!("client #{id}: lagged to receive geyser messages (skipped {skipped})");
+                            metrics::broadcast_subscriber_lagged_inc(&subscriber_id);
                             task_tracker.spawn(async move {
                                 let _ = stream_tx.send(Err(Status::internal("lagged to receive geyser messages"))).await;
                             });

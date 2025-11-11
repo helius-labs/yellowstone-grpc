@@ -119,6 +119,20 @@ lazy_static::lazy_static! {
         )
         .buckets(vec![5.0, 10.0, 20.0, 30.0, 50.0, 100.0, 200.0, 300.0, 500.0, 1000.0, 2000.0, 3000.0, 5000.0, 10000.0])
     ).unwrap();
+
+    static ref BROADCAST_QUEUE_SIZE: IntGauge = IntGauge::new(
+        "broadcast_queue_size", "Current number of messages in broadcast channel"
+    ).unwrap();
+
+    static ref BROADCAST_MESSAGES_SENT: IntCounterVec = IntCounterVec::new(
+        Opts::new("broadcast_messages_sent_total", "Total messages sent to broadcast channel by commitment level"),
+        &["commitment"]
+    ).unwrap();
+
+    static ref BROADCAST_SUBSCRIBER_LAGGED: IntCounterVec = IntCounterVec::new(
+        Opts::new("broadcast_subscriber_lagged_total", "Total times a subscriber lagged and missed broadcast messages"),
+        &["subscriber_id"]
+    ).unwrap();
 }
 
 #[derive(Debug)]
@@ -271,6 +285,9 @@ impl PrometheusService {
             register!(GRPC_SUBSCRIBER_SEND_BANDWIDTH_LOAD);
             register!(GRPC_SUBCRIBER_RX_LOAD);
             register!(GRPC_SUBSCRIBER_QUEUE_SIZE);
+            register!(BROADCAST_QUEUE_SIZE);
+            register!(BROADCAST_MESSAGES_SENT);
+            register!(BROADCAST_SUBSCRIBER_LAGGED);
 
             VERSION
                 .with_label_values(&[
@@ -489,4 +506,28 @@ pub fn set_subscriber_queue_size<S: AsRef<str>>(subscriber_id: S, size: u64) {
     GRPC_SUBSCRIBER_QUEUE_SIZE
         .with_label_values(&[subscriber_id.as_ref()])
         .set(size as i64);
+}
+
+pub fn broadcast_queue_size_inc() {
+    BROADCAST_QUEUE_SIZE.inc();
+}
+
+pub fn broadcast_queue_size_dec() {
+    BROADCAST_QUEUE_SIZE.dec();
+}
+
+pub fn broadcast_queue_size_add(delta: i64) {
+    BROADCAST_QUEUE_SIZE.add(delta);
+}
+
+pub fn broadcast_messages_sent_inc(commitment: &str) {
+    BROADCAST_MESSAGES_SENT
+        .with_label_values(&[commitment])
+        .inc();
+}
+
+pub fn broadcast_subscriber_lagged_inc<S: AsRef<str>>(subscriber_id: S) {
+    BROADCAST_SUBSCRIBER_LAGGED
+        .with_label_values(&[subscriber_id.as_ref()])
+        .inc();
 }
