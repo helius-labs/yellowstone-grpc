@@ -954,7 +954,44 @@ impl GrpcService {
             .await;
             match result {
                 Ok(()) => {
-                    info!("client #{id}: snapshot stream ended");
+                    info!("client #{id}: snapshot stream ended, waiting for queue to drain");
+
+                    const DRAIN_CHECK_INTERVAL_MS: u64 = 100;
+                    const MAX_DRAIN_WAIT_SECS: u64 = 3600;
+                    let drain_start = Instant::now();
+
+                    loop {
+                        let queue_size = stream_tx.queue_size();
+
+                        if queue_size == 0 {
+                            info!("client #{id}: snapshot queue fully drained, continuing to live stream");
+                            break;
+                        }
+
+                        if drain_start.elapsed().as_secs() > MAX_DRAIN_WAIT_SECS {
+                            error!("client #{id}: timeout waiting for snapshot queue to drain (queue_size: {})", queue_size);
+                            let _ = stream_tx.try_send(Err(Status::internal(
+                                "timeout waiting for snapshot queue to drain",
+                            )));
+                            return;
+                        }
+
+                        if cancellation_token.is_cancelled() {
+                            info!("client #{id}: cancelled while draining snapshot queue");
+                            return;
+                        }
+
+                        if drain_start.elapsed().as_secs() % 10 == 0
+                            && drain_start.elapsed().as_millis() % 10000
+                                < DRAIN_CHECK_INTERVAL_MS as u128
+                        {
+                            info!("client #{id}: waiting for snapshot queue to drain (queue_size: {}, elapsed: {}s)",
+                                queue_size, drain_start.elapsed().as_secs());
+                        }
+
+                        sleep(Duration::from_millis(DRAIN_CHECK_INTERVAL_MS)).await;
+                    }
+
                     just_finished_snapshot = true;
                 }
                 Err(ClientSnapshotReplayError::Cancelled) => {
@@ -984,7 +1021,6 @@ impl GrpcService {
             );
 
             set_subscriber_queue_size(&subscriber_id, stream_tx.queue_size());
-            metrics::client_stream_subscriber_queue_size_set(stream_tx.queue_size() as usize);
 
             tokio::select! {
                 _ = cancellation_token.cancelled() => {
@@ -1100,7 +1136,6 @@ impl GrpcService {
                             for message in filter.get_updates(message, Some(commitment)) {
                                 let proto_size = message.encoded_len().min(u32::MAX as usize) as u32;
 
-                                // Use blocking send() for snapshot clients draining backlog, try_send() for others
                                 let send_result = if just_finished_snapshot {
                                     // Blocking send to drain broadcast backlog slowly
                                     stream_tx.send(Ok(message)).await.map_err(|e| mpsc::error::TrySendError::Closed(e.0))
@@ -1160,7 +1195,6 @@ impl GrpcService {
         set_subscriber_recv_bandwidth_load(&subscriber_id, 0);
         set_subscriber_send_bandwidth_load(&subscriber_id, 0);
         set_subscriber_queue_size(&subscriber_id, 0);
-        metrics::client_stream_subscriber_queue_size_set(0);
 
         metrics::connections_total_dec();
         DebugClientMessage::maybe_send(&debug_client_tx, || DebugClientMessage::Removed { id });
@@ -1284,22 +1318,6 @@ impl Geyser for GrpcService {
             client_stats_settigns,
         );
         let (client_tx, client_rx) = mpsc::unbounded_channel();
-
-        // Monitor queue depth for snapshot clients
-        if snapshot_rx.is_some() {
-            let tx = stream_tx.clone();
-            let cancel = client_cancelation_token.child_token();
-            let cap = self.config_snapshot_client_channel_capacity;
-            self.task_tracker.spawn(async move {
-                let mut interval = tokio::time::interval(Duration::from_millis(100));
-                loop {
-                    tokio::select! {
-                        _ = cancel.cancelled() => { metrics::client_stream_queue_size_set(0); break; }
-                        _ = interval.tick() => metrics::client_stream_queue_size_set(cap.saturating_sub(tx.capacity())),
-                    }
-                }
-            });
-        }
 
         let ping_stream_tx = stream_tx.clone();
         let ping_client_tx = client_tx.clone();

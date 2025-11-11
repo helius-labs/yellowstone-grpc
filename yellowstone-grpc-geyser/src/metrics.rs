@@ -61,14 +61,6 @@ lazy_static::lazy_static! {
         "snapshot_queue_size", "Size of snapshot queue during startup"
     ).unwrap();
 
-    static ref CLIENT_STREAM_QUEUE_SIZE_TOTAL: IntGauge = IntGauge::new(
-        "client_stream_queue_size_total", "Total size of client stream queues"
-    ).unwrap();
-
-    static ref CLIENT_STREAM_SUBSCRIBER_QUEUE_SIZE: IntGauge = IntGauge::new(
-        "client_stream_subscriber_queue_size", "Size of client stream subscriber queue"
-    ).unwrap();
-
     static ref CONNECTIONS_TOTAL: IntGauge = IntGauge::new(
         "connections_total", "Total number of connections to gRPC service"
     ).unwrap();
@@ -270,8 +262,6 @@ impl PrometheusService {
             register!(INVALID_FULL_BLOCKS);
             register!(MESSAGE_QUEUE_SIZE);
             register!(SNAPSHOT_QUEUE_SIZE);
-            register!(CLIENT_STREAM_QUEUE_SIZE_TOTAL);
-            register!(CLIENT_STREAM_SUBSCRIBER_QUEUE_SIZE);
             register!(CONNECTIONS_TOTAL);
             register!(SUBSCRIPTIONS_TOTAL);
             register!(MISSED_STATUS_MESSAGE);
@@ -447,14 +437,6 @@ pub fn snapshot_queue_size_inc() {
 
 pub fn snapshot_queue_size_dec() {
     SNAPSHOT_QUEUE_SIZE.dec();
-}
-
-pub fn client_stream_queue_size_set(size: usize) {
-    CLIENT_STREAM_QUEUE_SIZE_TOTAL.set(size as i64);
-}
-
-pub fn client_stream_subscriber_queue_size_set(size: usize) {
-    CLIENT_STREAM_SUBSCRIBER_QUEUE_SIZE.set(size as i64);
 }
 
 pub fn connections_total_inc() {
