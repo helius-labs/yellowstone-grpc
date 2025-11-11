@@ -25,7 +25,7 @@ use {
         pin::Pin,
         sync::{
             atomic::{AtomicU64, AtomicUsize, Ordering},
-            Arc, RwLock as RwLockStd,
+            Arc,
         },
         task::Poll,
         time::SystemTime,
@@ -404,7 +404,7 @@ pub struct GrpcService {
     replay_first_available_slot: Option<Arc<AtomicU64>>,
     debug_clients_tx: Option<mpsc::UnboundedSender<DebugClientMessage>>,
     filter_names: Arc<Mutex<FilterNames>>,
-    raw_client_channels: Arc<RwLockStd<Vec<(u64, crossbeam_channel::Sender<Message>)>>>,
+    raw_client_command_tx: crossbeam_channel::Sender<crate::plugin::RawClientCommand>,
     cancellation_token: CancellationToken,
     task_tracker: TaskTracker,
 }
@@ -414,7 +414,7 @@ impl GrpcService {
     pub async fn create(
         config: ConfigGrpc,
         debug_clients_tx: Option<mpsc::UnboundedSender<DebugClientMessage>>,
-        raw_client_channels: Arc<RwLockStd<Vec<(u64, crossbeam_channel::Sender<Message>)>>>,
+        raw_client_command_tx: crossbeam_channel::Sender<crate::plugin::RawClientCommand>,
         is_reload: bool,
         service_cancellation_token: CancellationToken,
         task_tracker: TaskTracker,
@@ -508,7 +508,7 @@ impl GrpcService {
             replay_first_available_slot: replay_first_available_slot.clone(),
             debug_clients_tx,
             filter_names,
-            raw_client_channels,
+            raw_client_command_tx,
             cancellation_token: service_cancellation_token.clone(),
             task_tracker: task_tracker.clone(),
         })
@@ -1209,19 +1209,19 @@ impl GrpcService {
 
 pub struct CrossbeamReceiverStream {
     inner: crossbeam_channel::Receiver<Message>,
-    raw_client_channels: Arc<RwLockStd<Vec<(u64, crossbeam_channel::Sender<Message>)>>>,
+    raw_client_command_tx: crossbeam_channel::Sender<crate::plugin::RawClientCommand>,
     client_id: u64,
 }
 
 impl CrossbeamReceiverStream {
     fn new(
         inner: crossbeam_channel::Receiver<Message>,
-        raw_client_channels: Arc<RwLockStd<Vec<(u64, crossbeam_channel::Sender<Message>)>>>,
+        raw_client_command_tx: crossbeam_channel::Sender<crate::plugin::RawClientCommand>,
         client_id: u64,
     ) -> Self {
         Self {
             inner,
-            raw_client_channels,
+            raw_client_command_tx,
             client_id,
         }
     }
@@ -1229,16 +1229,15 @@ impl CrossbeamReceiverStream {
 
 impl Drop for CrossbeamReceiverStream {
     fn drop(&mut self) {
-        // Remove client from the vec by ID
-        if let Ok(mut raw_clients) = self.raw_client_channels.write() {
-            if let Some(pos) = raw_clients.iter().position(|(id, _)| *id == self.client_id) {
-                raw_clients.swap_remove(pos);
-                info!(
-                    "removed raw client {}, remaining: {}",
-                    self.client_id,
-                    raw_clients.len()
-                );
-            }
+        // Send unsubscribe command to manager
+        if let Err(_) = self
+            .raw_client_command_tx
+            .send(crate::plugin::RawClientCommand::Unsubscribe(self.client_id))
+        {
+            error!(
+                "failed to send unsubscribe command for client {}",
+                self.client_id
+            );
         }
     }
 }
@@ -1463,20 +1462,21 @@ impl Geyser for GrpcService {
 
         // Register raw client channel with unique ID
         let client_id = self.subscribe_id.fetch_add(1, Ordering::Relaxed) as u64;
-        if let Ok(mut raw_clients) = self.raw_client_channels.write() {
-            raw_clients.push((client_id, raw_message_tx));
-            info!(
-                "registered raw client {}, total: {}",
+
+        // Send subscribe command to manager
+        if let Err(_) = self
+            .raw_client_command_tx
+            .send(crate::plugin::RawClientCommand::Subscribe(
                 client_id,
-                raw_clients.len()
-            );
-        } else {
+                raw_message_tx,
+            ))
+        {
             return Err(Status::internal("failed to register raw client"));
         }
 
         Ok(Response::new(CrossbeamReceiverStream::new(
             raw_message_rx,
-            self.raw_client_channels.clone(),
+            self.raw_client_command_tx.clone(),
             client_id,
         )))
     }

@@ -13,7 +13,7 @@ use {
         concat, env,
         sync::{
             atomic::{AtomicBool, Ordering},
-            Arc, Mutex, RwLock,
+            Arc, Mutex,
         },
         time::Duration,
     },
@@ -28,30 +28,84 @@ use {
 };
 
 #[derive(Debug)]
+pub enum RawClientCommand {
+    Subscribe(u64, crossbeam_channel::Sender<Message>),
+    Unsubscribe(u64),
+}
+
+fn raw_client_manager(
+    command_rx: crossbeam_channel::Receiver<RawClientCommand>,
+    message_rx: crossbeam_channel::Receiver<Message>,
+    cancellation_token: CancellationToken,
+) {
+    let mut clients: Vec<(u64, crossbeam_channel::Sender<Message>)> = Vec::new();
+
+    loop {
+        crossbeam_channel::select! {
+            recv(command_rx) -> result => {
+                match result {
+                    Ok(cmd) => {
+                        match cmd {
+                            RawClientCommand::Subscribe(id, tx) => {
+                                log::info!("Raw client {} subscribed", id);
+                                clients.push((id, tx));
+                            }
+                            RawClientCommand::Unsubscribe(id) => {
+                                log::info!("Raw client {} unsubscribed", id);
+                                clients.retain(|(cid, _)| *cid != id);
+                            }
+                        }
+                    }
+                    Err(_) => {
+                        log::info!("Raw client manager command channel closed");
+                        break;
+                    }
+                }
+            }
+            recv(message_rx) -> result => {
+                match result {
+                    Ok(msg) => {
+                        clients.retain(|(id, tx)| {
+                            if tx.send(msg.clone()).is_err() {
+                                log::warn!("Raw client {} channel disconnected", id);
+                                false
+                            } else {
+                                true
+                            }
+                        });
+                    }
+                    Err(_) => {
+                        log::info!("Raw client manager message channel closed");
+                        break;
+                    }
+                }
+            }
+        }
+
+        if cancellation_token.is_cancelled() {
+            log::info!("Raw client manager shutting down");
+            break;
+        }
+    }
+}
+
+#[derive(Debug)]
 pub struct PluginInner {
     runtime: Runtime,
     snapshot_channel: Mutex<Option<crossbeam_channel::Sender<Box<Message>>>>,
     snapshot_channel_closed: AtomicBool,
     grpc_channel: mpsc::UnboundedSender<Message>,
-    raw_client_channels: Arc<RwLock<Vec<(u64, crossbeam_channel::Sender<Message>)>>>,
+    raw_client_message_tx: crossbeam_channel::Sender<Message>,
     plugin_cancellation_token: CancellationToken,
     plugin_task_tracker: TaskTracker,
 }
 
 impl PluginInner {
     fn send_message(&self, message: Message) {
-        if let Ok(raw_clients) = self.raw_client_channels.read() {
-            if !raw_clients.is_empty() {
-                for (id, tx) in raw_clients.iter() {
-                    if let Err(_) = tx.send(message.clone()) {
-                        // Channel disconnected, will be cleaned up later
-                        log::warn!("Raw client {} channel disconnected", id);
-                    }
-                }
-            }
+        if self.raw_client_message_tx.send(message.clone()).is_err() {
+            log::error!("failed to send message to raw clients: channel closed");
         }
 
-        // Then send to regular geyser_loop pipeline
         if self.grpc_channel.send(message).is_ok() {
             metrics::message_queue_size_inc();
         }
@@ -108,6 +162,7 @@ impl GeyserPlugin for Plugin {
         let prometheus_task_tracker = plugin_task_tracker.clone();
         let grpc_cancellation_token = plugin_cancellation_token.child_token();
         let grpc_task_tracker = plugin_task_tracker.clone();
+        let raw_client_cancellation_token = plugin_cancellation_token.child_token();
 
         let runtime = builder
             .thread_name_fn(crate::get_thread_name)
@@ -127,23 +182,36 @@ impl GeyserPlugin for Plugin {
             .await
             .map_err(|error| GeyserPluginError::Custom(Box::new(error)))?;
 
-            // Create shared raw client channels
-            let raw_client_channels = Arc::new(RwLock::new(Vec::new()));
+            // Create raw client manager channels
+            let (raw_client_command_tx, raw_client_command_rx) = crossbeam_channel::unbounded();
+            let (raw_client_message_tx, raw_client_message_rx) = crossbeam_channel::unbounded();
+
+            // Spawn the raw client manager thread
+            std::thread::Builder::new()
+                .name("raw-client-manager".to_string())
+                .spawn(move || {
+                    raw_client_manager(
+                        raw_client_command_rx,
+                        raw_client_message_rx,
+                        raw_client_cancellation_token,
+                    )
+                })
+                .expect("failed to spawn raw client manager thread");
 
             let (snapshot_channel, grpc_channel) = GrpcService::create(
                 config.grpc,
                 config.debug_clients_http.then_some(debug_client_tx),
-                raw_client_channels.clone(),
+                raw_client_command_tx,
                 is_reload,
                 grpc_cancellation_token,
                 grpc_task_tracker,
             )
             .await
             .map_err(|error| GeyserPluginError::Custom(format!("{error:?}").into()))?;
-            Ok::<_, GeyserPluginError>((snapshot_channel, grpc_channel, raw_client_channels))
+            Ok::<_, GeyserPluginError>((snapshot_channel, grpc_channel, raw_client_message_tx))
         });
 
-        let (snapshot_channel, grpc_channel, raw_client_channels) = result.inspect_err(|e| {
+        let (snapshot_channel, grpc_channel, raw_client_message_tx) = result.inspect_err(|e| {
             log::error!("failed to start plugin services: {e}");
             plugin_cancellation_token.cancel();
         })?;
@@ -153,7 +221,7 @@ impl GeyserPlugin for Plugin {
             snapshot_channel: Mutex::new(snapshot_channel),
             snapshot_channel_closed: AtomicBool::new(false),
             grpc_channel,
-            raw_client_channels,
+            raw_client_message_tx,
             plugin_cancellation_token,
             plugin_task_tracker,
         });
