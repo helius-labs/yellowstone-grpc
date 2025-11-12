@@ -27,9 +27,37 @@ use {
     },
 };
 
+#[derive(Debug, Clone, Default)]
+pub struct RawFilter {
+    pub accounts: bool,
+    pub slots: bool,
+    pub transactions: bool,
+    pub entries: bool,
+    pub blocks_meta: bool,
+}
+
+impl RawFilter {
+    pub fn matches(&self, message: &Message) -> bool {
+        // If all false (no filters specified), send everything
+        if !self.accounts && !self.slots && !self.transactions && !self.entries && !self.blocks_meta
+        {
+            return true;
+        }
+
+        match message {
+            Message::Account(_) => self.accounts,
+            Message::Slot(_) => self.slots,
+            Message::Transaction(_) => self.transactions,
+            Message::Entry(_) => self.entries,
+            Message::BlockMeta(_) => self.blocks_meta,
+            _ => false,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum RawClientCommand {
-    Subscribe(u64, crossbeam_channel::Sender<Message>),
+    Subscribe(u64, crossbeam_channel::Sender<Message>, RawFilter),
     Unsubscribe(u64),
 }
 
@@ -38,7 +66,7 @@ fn raw_client_manager(
     message_rx: crossbeam_channel::Receiver<Message>,
     cancellation_token: CancellationToken,
 ) {
-    let mut clients: Vec<(u64, crossbeam_channel::Sender<Message>)> = Vec::new();
+    let mut clients: Vec<(u64, crossbeam_channel::Sender<Message>, RawFilter)> = Vec::new();
 
     loop {
         crossbeam_channel::select! {
@@ -46,13 +74,13 @@ fn raw_client_manager(
                 match result {
                     Ok(cmd) => {
                         match cmd {
-                            RawClientCommand::Subscribe(id, tx) => {
-                                log::info!("Raw client {} subscribed", id);
-                                clients.push((id, tx));
+                            RawClientCommand::Subscribe(id, tx, filter) => {
+                                log::info!("Raw client {} subscribed with filter: {:?}", id, filter);
+                                clients.push((id, tx, filter));
                             }
                             RawClientCommand::Unsubscribe(id) => {
                                 log::info!("Raw client {} unsubscribed", id);
-                                clients.retain(|(cid, _)| *cid != id);
+                                clients.retain(|(cid, _, _)| *cid != id);
                             }
                         }
                     }
@@ -65,13 +93,14 @@ fn raw_client_manager(
             recv(message_rx) -> result => {
                 match result {
                     Ok(msg) => {
-                        clients.retain(|(id, tx)| {
-                            if tx.send(msg.clone()).is_err() {
-                                log::warn!("Raw client {} channel disconnected", id);
-                                false
-                            } else {
-                                true
+                        clients.retain(|(id, tx, filter)| {
+                            if filter.matches(&msg) {
+                                if tx.send(msg.clone()).is_err() {
+                                    log::warn!("Raw client {} channel disconnected", id);
+                                    return false;
+                                }
                             }
+                            true
                         });
                     }
                     Err(_) => {

@@ -1456,19 +1456,29 @@ impl Geyser for GrpcService {
 
     async fn subscribe_raw(
         &self,
-        _request: Request<Streaming<SubscribeRequest>>,
+        mut request: Request<Streaming<SubscribeRequest>>,
     ) -> TonicResult<Response<Self::SubscribeRawStream>> {
         let (raw_message_tx, raw_message_rx) = crossbeam_channel::unbounded();
 
         // Register raw client channel with unique ID
         let client_id = self.subscribe_id.fetch_add(1, Ordering::Relaxed) as u64;
 
-        // Send subscribe command to manager
+        let mut filter = crate::plugin::RawFilter::default();
+        let stream = request.get_mut();
+        if let Ok(Some(req)) = stream.message().await {
+            filter.accounts = !req.accounts.is_empty();
+            filter.slots = !req.slots.is_empty();
+            filter.transactions = !req.transactions.is_empty();
+            filter.entries = !req.entry.is_empty();
+            filter.blocks_meta = !req.blocks_meta.is_empty();
+        }
+
         if let Err(_) = self
             .raw_client_command_tx
             .send(crate::plugin::RawClientCommand::Subscribe(
                 client_id,
                 raw_message_tx,
+                filter,
             ))
         {
             return Err(Status::internal("failed to register raw client"));
