@@ -1207,15 +1207,15 @@ impl GrpcService {
     }
 }
 
-pub struct CrossbeamReceiverStream {
-    inner: crossbeam_channel::Receiver<Message>,
+pub struct RawReceiverStream {
+    inner: mpsc::Receiver<Message>,
     raw_client_command_tx: crossbeam_channel::Sender<crate::plugin::RawClientCommand>,
     client_id: u64,
 }
 
-impl CrossbeamReceiverStream {
+impl RawReceiverStream {
     fn new(
-        inner: crossbeam_channel::Receiver<Message>,
+        inner: mpsc::Receiver<Message>,
         raw_client_command_tx: crossbeam_channel::Sender<crate::plugin::RawClientCommand>,
         client_id: u64,
     ) -> Self {
@@ -1227,7 +1227,7 @@ impl CrossbeamReceiverStream {
     }
 }
 
-impl Drop for CrossbeamReceiverStream {
+impl Drop for RawReceiverStream {
     fn drop(&mut self) {
         // Send unsubscribe command to manager
         if let Err(_) = self
@@ -1242,24 +1242,12 @@ impl Drop for CrossbeamReceiverStream {
     }
 }
 
-impl Stream for CrossbeamReceiverStream {
+impl Stream for RawReceiverStream {
     type Item = TonicResult<FilteredUpdate>;
 
-    fn poll_next(self: Pin<&mut Self>, cx: &mut TaskContext<'_>) -> Poll<Option<Self::Item>> {
-        const MAX_QUEUE_SIZE: usize = 1_000_000;
-
-        if self.inner.len() > MAX_QUEUE_SIZE {
-            info!(
-                "Raw client {} queue too large ({}), disconnecting",
-                self.client_id,
-                self.inner.len()
-            );
-            return Poll::Ready(None);
-        }
-
-        match self.inner.try_recv() {
-            Ok(message) => {
-                // Convert raw Message to FilteredUpdate
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut TaskContext<'_>) -> Poll<Option<Self::Item>> {
+        match self.inner.poll_recv(cx) {
+            Poll::Ready(Some(message)) => {
                 let filtered_update = match &message {
                     Message::Account(msg) => FilteredUpdate::new_empty(
                         FilteredUpdateOneof::account(msg, Default::default()),
@@ -1282,12 +1270,8 @@ impl Stream for CrossbeamReceiverStream {
                 };
                 Poll::Ready(Some(Ok(filtered_update)))
             }
-            Err(crossbeam_channel::TryRecvError::Empty) => {
-                // No data available, wake up when more data might be available
-                cx.waker().wake_by_ref();
-                Poll::Pending
-            }
-            Err(crossbeam_channel::TryRecvError::Disconnected) => Poll::Ready(None),
+            Poll::Ready(None) => Poll::Ready(None),
+            Poll::Pending => Poll::Pending,
         }
     }
 }
@@ -1295,7 +1279,7 @@ impl Stream for CrossbeamReceiverStream {
 #[tonic::async_trait]
 impl Geyser for GrpcService {
     type SubscribeStream = LoadAwareReceiver<TonicResult<FilteredUpdate>>;
-    type SubscribeRawStream = CrossbeamReceiverStream;
+    type SubscribeRawStream = RawReceiverStream;
 
     async fn subscribe(
         &self,
@@ -1458,7 +1442,7 @@ impl Geyser for GrpcService {
         &self,
         mut request: Request<Streaming<SubscribeRequest>>,
     ) -> TonicResult<Response<Self::SubscribeRawStream>> {
-        let (raw_message_tx, raw_message_rx) = crossbeam_channel::unbounded();
+        let (raw_message_tx, raw_message_rx) = mpsc::channel(1_000_000);
 
         // Register raw client channel with unique ID
         let client_id = self.subscribe_id.fetch_add(1, Ordering::Relaxed) as u64;
@@ -1484,7 +1468,7 @@ impl Geyser for GrpcService {
             return Err(Status::internal("failed to register raw client"));
         }
 
-        Ok(Response::new(CrossbeamReceiverStream::new(
+        Ok(Response::new(RawReceiverStream::new(
             raw_message_rx,
             self.raw_client_command_tx.clone(),
             client_id,

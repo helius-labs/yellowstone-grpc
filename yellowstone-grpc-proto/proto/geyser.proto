@@ -9,6 +9,7 @@ package geyser;
 
 service Geyser {
   rpc Subscribe(stream SubscribeRequest) returns (stream SubscribeUpdate) {}
+  rpc SubscribeRaw(stream SubscribeRequest) returns (stream SubscribeUpdate) {}
   rpc SubscribeReplayInfo(SubscribeReplayInfoRequest) returns (SubscribeReplayInfoResponse) {}
   rpc Ping(PingRequest) returns (PongResponse) {}
   rpc GetLatestBlockhash(GetLatestBlockhashRequest) returns (GetLatestBlockhashResponse) {}

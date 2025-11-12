@@ -57,7 +57,7 @@ impl RawFilter {
 
 #[derive(Debug)]
 pub enum RawClientCommand {
-    Subscribe(u64, crossbeam_channel::Sender<Message>, RawFilter),
+    Subscribe(u64, tokio::sync::mpsc::Sender<Message>, RawFilter),
     Unsubscribe(u64),
 }
 
@@ -66,7 +66,7 @@ fn raw_client_manager(
     message_rx: crossbeam_channel::Receiver<Message>,
     cancellation_token: CancellationToken,
 ) {
-    let mut clients: Vec<(u64, crossbeam_channel::Sender<Message>, RawFilter)> = Vec::new();
+    let mut clients: Vec<(u64, tokio::sync::mpsc::Sender<Message>, RawFilter)> = Vec::new();
 
     loop {
         crossbeam_channel::select! {
@@ -95,12 +95,21 @@ fn raw_client_manager(
                     Ok(msg) => {
                         clients.retain(|(id, tx, filter)| {
                             if filter.matches(&msg) {
-                                if tx.send(msg.clone()).is_err() {
-                                    log::warn!("Raw client {} channel disconnected", id);
-                                    return false;
+                                // Try to send, disconnect client if channel is full
+                                match tx.try_send(msg.clone()) {
+                                    Ok(_) => true,
+                                    Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
+                                        log::warn!("Raw client {} buffer full, disconnecting", id);
+                                        false
+                                    }
+                                    Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
+                                        log::info!("Raw client {} channel closed", id);
+                                        false
+                                    }
                                 }
+                            } else {
+                                true
                             }
-                            true
                         });
                     }
                     Err(_) => {
