@@ -811,8 +811,11 @@ impl GrpcService {
 
                             // processed
                             processed_messages.push(message.clone());
+                            let processed_count = processed_messages.len();
                             let _ =
                                 broadcast_tx.send((CommitmentLevel::Processed, processed_messages.into()));
+                            metrics::broadcast_queue_size_add(processed_count as i64);
+                            metrics::broadcast_messages_sent_inc("processed");
                             processed_messages = Vec::with_capacity(PROCESSED_MESSAGES_MAX);
                             processed_sleep
                                 .as_mut()
@@ -820,13 +823,19 @@ impl GrpcService {
 
                             // confirmed
                             confirmed_messages.push(message.clone());
+                            let confirmed_count = confirmed_messages.len();
                             let _ =
                                 broadcast_tx.send((CommitmentLevel::Confirmed, confirmed_messages.into()));
+                            metrics::broadcast_queue_size_add(confirmed_count as i64);
+                            metrics::broadcast_messages_sent_inc("confirmed");
 
                             // finalized
                             finalized_messages.push(message);
+                            let finalized_count = finalized_messages.len();
                             let _ =
                                 broadcast_tx.send((CommitmentLevel::Finalized, finalized_messages.into()));
+                            metrics::broadcast_queue_size_add(finalized_count as i64);
+                            metrics::broadcast_messages_sent_inc("finalized");
                         } else {
                             let mut confirmed_messages = vec![];
                             let mut finalized_messages = vec![];
@@ -850,8 +859,13 @@ impl GrpcService {
                                 || !confirmed_messages.is_empty()
                                 || !finalized_messages.is_empty()
                             {
+                                let processed_count = processed_messages.len();
                                 let _ = broadcast_tx
                                     .send((CommitmentLevel::Processed, processed_messages.into()));
+                                if processed_count > 0 {
+                                    metrics::broadcast_queue_size_add(processed_count as i64);
+                                    metrics::broadcast_messages_sent_inc("processed");
+                                }
                                 processed_messages = Vec::with_capacity(PROCESSED_MESSAGES_MAX);
                                 processed_sleep
                                     .as_mut()
@@ -859,20 +873,29 @@ impl GrpcService {
                             }
 
                             if !confirmed_messages.is_empty() {
+                                let confirmed_count = confirmed_messages.len();
                                 let _ =
                                     broadcast_tx.send((CommitmentLevel::Confirmed, confirmed_messages.into()));
+                                metrics::broadcast_queue_size_add(confirmed_count as i64);
+                                metrics::broadcast_messages_sent_inc("confirmed");
                             }
 
                             if !finalized_messages.is_empty() {
+                                let finalized_count = finalized_messages.len();
                                 let _ =
                                     broadcast_tx.send((CommitmentLevel::Finalized, finalized_messages.into()));
+                                metrics::broadcast_queue_size_add(finalized_count as i64);
+                                metrics::broadcast_messages_sent_inc("finalized");
                             }
                         }
                     }
                 }
                 () = &mut processed_sleep => {
                     if !processed_messages.is_empty() {
+                        let processed_count = processed_messages.len();
                         let _ = broadcast_tx.send((CommitmentLevel::Processed, processed_messages.into()));
+                        metrics::broadcast_queue_size_add(processed_count as i64);
+                        metrics::broadcast_messages_sent_inc("processed");
                         processed_messages = Vec::with_capacity(PROCESSED_MESSAGES_MAX);
                     }
                     processed_sleep.as_mut().reset(Instant::now() + PROCESSED_MESSAGES_SLEEP);
@@ -939,6 +962,7 @@ impl GrpcService {
         });
         info!("client #{id}: new");
 
+        let mut just_finished_snapshot = false;
         if let Some(snapshot_rx) = snapshot_rx.take() {
             info!("client #{id}: snapshot requested");
             let result = Self::client_loop_snapshot(
@@ -953,7 +977,45 @@ impl GrpcService {
             .await;
             match result {
                 Ok(()) => {
-                    info!("client #{id}: snapshot stream ended");
+                    info!("client #{id}: snapshot stream ended, waiting for queue to drain");
+
+                    const DRAIN_CHECK_INTERVAL_MS: u64 = 100;
+                    const MAX_DRAIN_WAIT_SECS: u64 = 3600;
+                    let drain_start = Instant::now();
+
+                    loop {
+                        let queue_size = stream_tx.queue_size();
+
+                        if queue_size == 0 {
+                            info!("client #{id}: snapshot queue fully drained, continuing to live stream");
+                            break;
+                        }
+
+                        if drain_start.elapsed().as_secs() > MAX_DRAIN_WAIT_SECS {
+                            error!("client #{id}: timeout waiting for snapshot queue to drain (queue_size: {})", queue_size);
+                            let _ = stream_tx.try_send(Err(Status::internal(
+                                "timeout waiting for snapshot queue to drain",
+                            )));
+                            return;
+                        }
+
+                        if cancellation_token.is_cancelled() {
+                            info!("client #{id}: cancelled while draining snapshot queue");
+                            return;
+                        }
+
+                        if drain_start.elapsed().as_secs() % 10 == 0
+                            && drain_start.elapsed().as_millis() % 10000
+                                < DRAIN_CHECK_INTERVAL_MS as u128
+                        {
+                            info!("client #{id}: waiting for snapshot queue to drain (queue_size: {}, elapsed: {}s)",
+                                queue_size, drain_start.elapsed().as_secs());
+                        }
+
+                        sleep(Duration::from_millis(DRAIN_CHECK_INTERVAL_MS)).await;
+                    }
+
+                    just_finished_snapshot = true;
                 }
                 Err(ClientSnapshotReplayError::Cancelled) => {
                     let _ = stream_tx.try_send(Err(Status::internal(
@@ -1079,12 +1141,17 @@ impl GrpcService {
                 }
                 message = messages_rx.recv() => {
                     let (commitment, messages) = match message {
-                        Ok((commitment, messages)) => (commitment, messages),
+                        Ok((commitment, messages)) => {
+                            // Decrement broadcast queue for consumed messages
+                            metrics::broadcast_queue_size_add(-(messages.len() as i64));
+                            (commitment, messages)
+                        },
                         Err(broadcast::error::RecvError::Closed) => {
                             break 'outer;
                         },
-                        Err(broadcast::error::RecvError::Lagged(_)) => {
-                            info!("client #{id}: lagged to receive geyser messages");
+                        Err(broadcast::error::RecvError::Lagged(skipped)) => {
+                            info!("client #{id}: lagged to receive geyser messages (skipped {skipped})");
+                            metrics::broadcast_subscriber_lagged_inc(&subscriber_id);
                             task_tracker.spawn(async move {
                                 let _ = stream_tx.send(Err(Status::internal("lagged to receive geyser messages"))).await;
                             });
@@ -1096,13 +1163,28 @@ impl GrpcService {
                         for (_msgid, message) in messages.iter() {
                             for message in filter.get_updates(message, Some(commitment)) {
                                 let proto_size = message.encoded_len().min(u32::MAX as usize) as u32;
-                                match stream_tx.try_send(Ok(message)) {
+
+                                let send_result = if just_finished_snapshot {
+                                    // Blocking send to drain broadcast backlog slowly
+                                    stream_tx.send(Ok(message)).await.map_err(|e| mpsc::error::TrySendError::Closed(e.0))
+                                } else {
+                                    // Non-blocking for regular clients
+                                    stream_tx.try_send(Ok(message))
+                                };
+
+                                match send_result {
                                     Ok(()) => {
                                         metrics::incr_grpc_message_sent_counter(&subscriber_id);
                                         metrics::incr_grpc_bytes_sent(&subscriber_id, proto_size);
                                     }
                                     Err(mpsc::error::TrySendError::Full(_)) => {
-                                        error!("client #{id}: lagged to send an update");
+                                        let queue_size = stream_tx.queue_size();
+                                        let send_rate = stream_tx.estimated_send_rate().per_second();
+                                        let recv_rate = stream_tx.estimated_consuming_rate().per_second();
+                                        error!(
+                                            "client #{id}: lagged to send an update - queue_size: {}, send_rate: {} bytes/s, recv_rate: {} bytes/s, subscriber_id: {}",
+                                            queue_size, send_rate, recv_rate, subscriber_id
+                                        );
                                         task_tracker.spawn(async move {
                                             let _ = stream_tx.send(Err(Status::internal("lagged to send an update"))).await;
                                         });
@@ -1113,6 +1195,15 @@ impl GrpcService {
                                         break 'outer;
                                     }
                                 }
+                            }
+                        }
+
+                        // After first batch with blocking send, switch back to try_send
+                        if just_finished_snapshot {
+                            let queue_size = stream_tx.queue_size();
+                            if queue_size < 100_000 {
+                                info!("client #{id}: broadcast backlog drained (queue: {}), switching to try_send", queue_size);
+                                just_finished_snapshot = false;
                             }
                         }
                     } else {
@@ -1193,7 +1284,7 @@ impl GrpcService {
             }
             let message = match snapshot_rx.try_recv() {
                 Ok(message) => {
-                    metrics::message_queue_size_dec();
+                    metrics::snapshot_queue_size_dec();
                     message
                 }
                 Err(crossbeam_channel::TryRecvError::Empty) => {

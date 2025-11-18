@@ -183,7 +183,7 @@ impl GeyserPlugin for Plugin {
                     let message =
                         Message::Account(MessageAccount::from_geyser(account, slot, is_startup));
                     match channel.send(Box::new(message)) {
-                        Ok(()) => metrics::message_queue_size_inc(),
+                        Ok(()) => metrics::snapshot_queue_size_inc(),
                         Err(_) => {
                             if !inner.snapshot_channel_closed.swap(true, Ordering::Relaxed) {
                                 log::error!(
@@ -291,7 +291,7 @@ impl GeyserPlugin for Plugin {
     }
 
     fn account_data_snapshot_notifications_enabled(&self) -> bool {
-        false
+        true
     }
 
     fn transaction_notifications_enabled(&self) -> bool {
