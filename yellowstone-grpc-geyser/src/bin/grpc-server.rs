@@ -2,12 +2,12 @@ use {
     anyhow::Result,
     clap::Parser,
     log::{error, info},
-    std::{
-        sync::{Arc, RwLock},
-        time::Duration,
-    },
+    std::{collections::HashMap, thread, time::Duration},
     tokio::signal,
-    yellowstone_grpc_geyser::{config::Config, grpc::GrpcService},
+    yellowstone_grpc_geyser::{
+        config::Config,
+        grpc::{ClientCommand, GrpcService},
+    },
 };
 
 #[derive(Debug, Parser)]
@@ -37,13 +37,55 @@ async fn main() -> Result<()> {
     // Store address before moving config
     let grpc_address = config.grpc.address;
 
-    // Create shared raw client channels
-    let raw_client_channels = Arc::new(RwLock::new(Vec::new()));
+    // Create command channel with crossbeam
+    let (client_command_tx, client_command_rx) = crossbeam_channel::unbounded();
+
+    // Spawn dedicated broadcaster thread (std::thread)
+    let broadcast_client_command_tx = client_command_tx.clone();
+    thread::spawn(move || {
+        let mut clients: HashMap<
+            u64,
+            tokio::sync::mpsc::UnboundedSender<yellowstone_grpc_proto::plugin::message::Message>,
+        > = HashMap::new();
+
+        loop {
+            match client_command_rx.recv() {
+                Ok(ClientCommand::Subscribe { client_id, sender }) => {
+                    clients.insert(client_id, sender);
+                    info!(
+                        "Client {} subscribed, total clients: {}",
+                        client_id,
+                        clients.len()
+                    );
+                }
+                Ok(ClientCommand::Unsubscribe { client_id }) => {
+                    clients.remove(&client_id);
+                    info!(
+                        "Client {} unsubscribed, remaining clients: {}",
+                        client_id,
+                        clients.len()
+                    );
+                }
+                Ok(ClientCommand::Broadcast { message }) => {
+                    // Remove disconnected clients while broadcasting
+                    clients.retain(|id, tx| {
+                        if tx.send(message.clone()).is_err() {
+                            log::warn!("Client {} channel disconnected during broadcast", id);
+                            false
+                        } else {
+                            true
+                        }
+                    });
+                }
+                Err(_) => break,
+            }
+        }
+    });
 
     // Create gRPC service
     let grpc_shutdown = GrpcService::create(
         config.grpc,
-        raw_client_channels.clone(),
+        broadcast_client_command_tx,
         false, // is_reload = false for standalone server
     )
     .await?;
@@ -53,7 +95,7 @@ async fn main() -> Result<()> {
     // Optional test mode - simulate some messages
     if args.test_mode {
         info!("Running in test mode - simulating messages");
-        tokio::spawn(simulate_messages(raw_client_channels.clone()));
+        thread::spawn(move || simulate_messages(client_command_tx.clone()));
     }
 
     // Wait for shutdown signal
@@ -73,28 +115,19 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn simulate_messages(
-    raw_client_channels: Arc<
-        RwLock<
-            Vec<(
-                u64,
-                crossbeam_channel::Sender<yellowstone_grpc_proto::plugin::message::Message>,
-            )>,
-        >,
-    >,
-) {
+fn simulate_messages(client_command_tx: crossbeam_channel::Sender<ClientCommand>) {
     use {
-        log::{info, warn},
+        log::info,
         prost_types::Timestamp,
-        std::time::SystemTime,
+        std::{thread, time::SystemTime},
         yellowstone_grpc_proto::plugin::message::{Message, MessageSlot, SlotStatus},
     };
 
     let mut slot = 1000u64;
-    let mut interval = tokio::time::interval(Duration::from_micros(100));
+    let interval = Duration::from_micros(100);
 
     loop {
-        interval.tick().await;
+        thread::sleep(interval);
 
         // Simulate a processed slot message
         let message = Message::Slot(MessageSlot {
@@ -105,17 +138,8 @@ async fn simulate_messages(
             created_at: Timestamp::from(SystemTime::now()),
         });
 
-        // Send to raw clients
-        if let Ok(raw_clients) = raw_client_channels.read() {
-            if !raw_clients.is_empty() {
-                for (id, tx) in raw_clients.iter() {
-                    if let Err(_) = tx.send(message.clone()) {
-                        // Channel disconnected, will be cleaned up later
-                        warn!("Raw client {} channel disconnected", id);
-                    }
-                }
-            }
-        }
+        // Send broadcast command
+        let _ = client_command_tx.send(ClientCommand::Broadcast { message });
 
         slot += 1;
 

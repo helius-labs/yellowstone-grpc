@@ -1,15 +1,14 @@
 use {
-    crate::{config::Config, grpc::GrpcService},
+    crate::{
+        config::Config,
+        grpc::{ClientCommand, GrpcService},
+    },
     agave_geyser_plugin_interface::geyser_plugin_interface::{
         GeyserPlugin, GeyserPluginError, ReplicaAccountInfoVersions, ReplicaBlockInfoVersions,
         ReplicaEntryInfoVersions, ReplicaTransactionInfoVersions, Result as PluginResult,
         SlotStatus,
     },
-    std::{
-        concat, env,
-        sync::{Arc, RwLock},
-        time::Duration,
-    },
+    std::{collections::HashMap, concat, env, sync::Arc, thread, time::Duration},
     tokio::{
         runtime::{Builder, Runtime},
         sync::Notify,
@@ -21,22 +20,13 @@ use {
 pub struct PluginInner {
     runtime: Runtime,
     grpc_shutdown: Arc<Notify>,
-    raw_client_channels: Arc<RwLock<Vec<(u64, crossbeam_channel::Sender<Message>)>>>,
+    client_command_tx: crossbeam_channel::Sender<ClientCommand>,
 }
 
 impl PluginInner {
     fn send_message(&self, message: Message) {
-        // Send to raw clients only
-        if let Ok(raw_clients) = self.raw_client_channels.read() {
-            if !raw_clients.is_empty() {
-                for (id, tx) in raw_clients.iter() {
-                    if let Err(_) = tx.send(message.clone()) {
-                        // Channel disconnected, will be cleaned up later
-                        log::warn!("Raw client {} channel disconnected", id);
-                    }
-                }
-            }
-        }
+        // Send broadcast command to the dedicated thread
+        let _ = self.client_command_tx.send(ClientCommand::Broadcast { message });
     }
 }
 
@@ -83,22 +73,60 @@ impl GeyserPlugin for Plugin {
             .build()
             .map_err(|error| GeyserPluginError::Custom(Box::new(error)))?;
 
-        let (grpc_shutdown, raw_client_channels) = runtime.block_on(async move {
-            // Create shared raw client channels
-            let raw_client_channels = Arc::new(RwLock::new(Vec::new()));
+        let (grpc_shutdown, client_command_tx) = runtime.block_on(async move {
+            // Create command channel with crossbeam
+            let (client_command_tx, client_command_rx) = crossbeam_channel::unbounded();
+
+            // Spawn dedicated broadcaster thread (std::thread)
+            let broadcast_client_command_tx = client_command_tx.clone();
+            thread::spawn(move || {
+                let mut clients: HashMap<u64, tokio::sync::mpsc::UnboundedSender<Message>> = HashMap::new();
+
+                while let Ok(command) = client_command_rx.recv() {
+                    match command {
+                        ClientCommand::Subscribe { client_id, sender } => {
+                            clients.insert(client_id, sender);
+                            log::info!(
+                                "Client {} subscribed, total clients: {}",
+                                client_id,
+                                clients.len()
+                            );
+                        }
+                        ClientCommand::Unsubscribe { client_id } => {
+                            clients.remove(&client_id);
+                            log::info!(
+                                "Client {} unsubscribed, remaining clients: {}",
+                                client_id,
+                                clients.len()
+                            );
+                        }
+                        ClientCommand::Broadcast { message } => {
+                            // Remove disconnected clients while broadcasting
+                            clients.retain(|id, tx| {
+                                if tx.send(message.clone()).is_err() {
+                                    log::warn!("Client {} channel disconnected during broadcast", id);
+                                    false
+                                } else {
+                                    true
+                                }
+                            });
+                        }
+                    }
+                }
+            });
 
             let grpc_shutdown =
-                GrpcService::create(config.grpc, raw_client_channels.clone(), is_reload)
+                GrpcService::create(config.grpc, broadcast_client_command_tx, is_reload)
                     .await
                     .map_err(|error| GeyserPluginError::Custom(format!("{error:?}").into()))?;
 
-            Ok::<_, GeyserPluginError>((grpc_shutdown, raw_client_channels))
+            Ok::<_, GeyserPluginError>((grpc_shutdown, client_command_tx))
         })?;
 
         self.inner = Some(PluginInner {
             runtime,
             grpc_shutdown,
-            raw_client_channels,
+            client_command_tx,
         });
 
         Ok(())
