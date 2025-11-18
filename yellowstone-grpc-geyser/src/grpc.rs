@@ -7,7 +7,7 @@ use {
         Arc,
     },
     tokio::sync::{mpsc, Notify},
-    tokio_stream::wrappers::UnboundedReceiverStream,
+    tokio_stream::wrappers::ReceiverStream,
     tonic::{
         service::interceptor::interceptor,
         transport::{
@@ -36,7 +36,7 @@ use {
 pub enum ClientCommand {
     Subscribe {
         client_id: u64,
-        sender: mpsc::UnboundedSender<Message>,
+        sender: mpsc::Sender<Message>,
     },
     Unsubscribe {
         client_id: u64,
@@ -139,19 +139,19 @@ impl GrpcService {
 }
 
 pub struct MessageReceiverStream {
-    inner: UnboundedReceiverStream<Message>,
+    inner: ReceiverStream<Message>,
     client_command_tx: crossbeam_channel::Sender<ClientCommand>,
     client_id: u64,
 }
 
 impl MessageReceiverStream {
     fn new(
-        inner: mpsc::UnboundedReceiver<Message>,
+        inner: mpsc::Receiver<Message>,
         client_command_tx: crossbeam_channel::Sender<ClientCommand>,
         client_id: u64,
     ) -> Self {
         Self {
-            inner: UnboundedReceiverStream::new(inner),
+            inner: ReceiverStream::new(inner),
             client_command_tx,
             client_id,
         }
@@ -216,7 +216,7 @@ impl Geyser for GrpcService {
         &self,
         _request: Request<Streaming<SubscribeRequest>>,
     ) -> TonicResult<Response<Self::SubscribeRawStream>> {
-        let (raw_message_tx, raw_message_rx) = mpsc::unbounded_channel();
+        let (raw_message_tx, raw_message_rx) = mpsc::channel(1)_000_000);
 
         // Register raw client channel with unique ID
         let client_id = self.subscribe_id.fetch_add(1, Ordering::Relaxed) as u64;

@@ -26,7 +26,9 @@ pub struct PluginInner {
 impl PluginInner {
     fn send_message(&self, message: Message) {
         // Send broadcast command to the dedicated thread
-        let _ = self.client_command_tx.send(ClientCommand::Broadcast { message });
+        let _ = self
+            .client_command_tx
+            .send(ClientCommand::Broadcast { message });
     }
 }
 
@@ -74,13 +76,13 @@ impl GeyserPlugin for Plugin {
             .map_err(|error| GeyserPluginError::Custom(Box::new(error)))?;
 
         let (grpc_shutdown, client_command_tx) = runtime.block_on(async move {
-            // Create command channel with crossbeam
-            let (client_command_tx, client_command_rx) = crossbeam_channel::unbounded();
+            // Create command channel with crossbeam (bounded 1M)
+            let (client_command_tx, client_command_rx) = crossbeam_channel::bounded(10_000_000);
 
             // Spawn dedicated broadcaster thread (std::thread)
             let broadcast_client_command_tx = client_command_tx.clone();
             thread::spawn(move || {
-                let mut clients: HashMap<u64, tokio::sync::mpsc::UnboundedSender<Message>> = HashMap::new();
+                let mut clients: HashMap<u64, tokio::sync::mpsc::Sender<Message>> = HashMap::new();
 
                 while let Ok(command) = client_command_rx.recv() {
                     match command {
@@ -103,8 +105,11 @@ impl GeyserPlugin for Plugin {
                         ClientCommand::Broadcast { message } => {
                             // Remove disconnected clients while broadcasting
                             clients.retain(|id, tx| {
-                                if tx.send(message.clone()).is_err() {
-                                    log::warn!("Client {} channel disconnected during broadcast", id);
+                                if tx.try_send(message.clone()).is_err() {
+                                    log::warn!(
+                                        "Client {} channel disconnected during broadcast",
+                                        id
+                                    );
                                     false
                                 } else {
                                     true

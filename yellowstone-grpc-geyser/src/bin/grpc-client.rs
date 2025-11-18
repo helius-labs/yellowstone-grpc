@@ -5,10 +5,7 @@ use {
     std::time::{Duration, SystemTime},
     tokio::signal,
     tonic::transport::Channel,
-    yellowstone_grpc_proto::{
-        prelude::SubscribeRequest,
-        tonic::Streaming,
-    },
+    yellowstone_grpc_proto::{prelude::SubscribeRequest, tonic::Streaming},
 };
 
 #[derive(Debug, Parser)]

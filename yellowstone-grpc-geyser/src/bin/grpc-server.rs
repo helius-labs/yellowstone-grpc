@@ -37,15 +37,15 @@ async fn main() -> Result<()> {
     // Store address before moving config
     let grpc_address = config.grpc.address;
 
-    // Create command channel with crossbeam
-    let (client_command_tx, client_command_rx) = crossbeam_channel::unbounded();
+    // Create command channel with crossbeam (bounded 1M)
+    let (client_command_tx, client_command_rx) = crossbeam_channel::bounded(1_000_000);
 
     // Spawn dedicated broadcaster thread (std::thread)
     let broadcast_client_command_tx = client_command_tx.clone();
     thread::spawn(move || {
         let mut clients: HashMap<
             u64,
-            tokio::sync::mpsc::UnboundedSender<yellowstone_grpc_proto::plugin::message::Message>,
+            tokio::sync::mpsc::Sender<yellowstone_grpc_proto::plugin::message::Message>,
         > = HashMap::new();
 
         loop {
@@ -69,7 +69,7 @@ async fn main() -> Result<()> {
                 Ok(ClientCommand::Broadcast { message }) => {
                     // Remove disconnected clients while broadcasting
                     clients.retain(|id, tx| {
-                        if tx.send(message.clone()).is_err() {
+                        if tx.try_send(message.clone()).is_err() {
                             log::warn!("Client {} channel disconnected during broadcast", id);
                             false
                         } else {
