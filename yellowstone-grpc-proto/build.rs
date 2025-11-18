@@ -25,8 +25,8 @@ fn main() -> anyhow::Result<()> {
         .package("geyser")
         .method(
             Method::builder()
-                .name("subscribe_raw")
-                .route_name("SubscribeRaw")
+                .name("subscribe")
+                .route_name("Subscribe")
                 .input_type("crate::geyser::SubscribeRequest")
                 .output_type("crate::plugin::filter::message::FilteredUpdate")
                 .codec_path("tonic::codec::ProstCodec")

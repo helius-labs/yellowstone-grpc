@@ -210,13 +210,13 @@ impl futures::Stream for MessageReceiverStream {
 
 #[tonic::async_trait]
 impl Geyser for GrpcService {
-    type SubscribeRawStream = MessageReceiverStream;
+    type SubscribeStream = MessageReceiverStream;
 
-    async fn subscribe_raw(
+    async fn subscribe(
         &self,
         _request: Request<Streaming<SubscribeRequest>>,
-    ) -> TonicResult<Response<Self::SubscribeRawStream>> {
-        let (raw_message_tx, raw_message_rx) = mpsc::channel(1)_000_000);
+    ) -> TonicResult<Response<Self::SubscribeStream>> {
+        let (raw_message_tx, raw_message_rx) = mpsc::channel(10_000_000);
 
         // Register raw client channel with unique ID
         let client_id = self.subscribe_id.fetch_add(1, Ordering::Relaxed) as u64;
