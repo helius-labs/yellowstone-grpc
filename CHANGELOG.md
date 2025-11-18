@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 **Note:** Version 0 of Semantic Versioning is handled differently from version 1 and above.
 The minor version will be incremented upon a breaking change and the patch version will be incremented for features.
 
+## [3.0.8](https://github.com/helius-labs/yellowstone-grpc/compare/v3.0.7...v3.0.8) (2025-11-18)
+
+
+### Bug Fixes
+
+* Add aggregated client level metrics ([#26](https://github.com/helius-labs/yellowstone-grpc/issues/26)) ([ab87b37](https://github.com/helius-labs/yellowstone-grpc/commit/ab87b373e1018261e16ed0fb3ef42fa2b8971ca8))
+
 ## 3.0.7 (2025-11-05)
 
 
