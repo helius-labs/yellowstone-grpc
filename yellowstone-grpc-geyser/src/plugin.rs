@@ -1,9 +1,5 @@
 use {
-    crate::{
-        config::Config,
-        grpc::GrpcService,
-        metrics::{self, PrometheusService},
-    },
+    crate::{config::Config, grpc::GrpcService},
     agave_geyser_plugin_interface::geyser_plugin_interface::{
         GeyserPlugin, GeyserPluginError, ReplicaAccountInfoVersions, ReplicaBlockInfoVersions,
         ReplicaEntryInfoVersions, ReplicaTransactionInfoVersions, Result as PluginResult,
@@ -11,40 +7,26 @@ use {
     },
     std::{
         concat, env,
-        sync::{
-            atomic::{AtomicBool, Ordering},
-            Arc, Mutex, RwLock,
-        },
+        sync::{Arc, RwLock},
         time::Duration,
     },
     tokio::{
         runtime::{Builder, Runtime},
-        sync::{mpsc, Notify},
+        sync::Notify,
     },
-    yellowstone_grpc_proto::plugin::message::{
-        Message, MessageAccount, MessageBlockMeta, MessageEntry, MessageSlot, MessageTransaction,
-    },
+    yellowstone_grpc_proto::plugin::message::{Message, MessageTransaction},
 };
-
-#[cfg(feature = "statsd")]
-use ::metrics::set_global_recorder;
-#[cfg(feature = "statsd")]
-use metrics_exporter_statsd::StatsdBuilder;
 
 #[derive(Debug)]
 pub struct PluginInner {
     runtime: Runtime,
-    snapshot_channel: Mutex<Option<crossbeam_channel::Sender<Box<Message>>>>,
-    snapshot_channel_closed: AtomicBool,
-    grpc_channel: mpsc::UnboundedSender<Message>,
     grpc_shutdown: Arc<Notify>,
-    prometheus: PrometheusService,
     raw_client_channels: Arc<RwLock<Vec<(u64, crossbeam_channel::Sender<Message>)>>>,
 }
 
 impl PluginInner {
     fn send_message(&self, message: Message) {
-        // Send to raw clients first (bypasses all processing)
+        // Send to raw clients only
         if let Ok(raw_clients) = self.raw_client_channels.read() {
             if !raw_clients.is_empty() {
                 for (id, tx) in raw_clients.iter() {
@@ -54,11 +36,6 @@ impl PluginInner {
                     }
                 }
             }
-        }
-
-        // Then send to regular geyser_loop pipeline
-        if self.grpc_channel.send(message).is_ok() {
-            metrics::message_queue_size_inc();
         }
     }
 }
@@ -106,62 +83,21 @@ impl GeyserPlugin for Plugin {
             .build()
             .map_err(|error| GeyserPluginError::Custom(Box::new(error)))?;
 
-        let (snapshot_channel, grpc_channel, grpc_shutdown, prometheus, raw_client_channels) =
-            runtime.block_on(async move {
-                if let Some(config) = config.clickhouse {
-                    clickhouse_sink::init(config)
-                        .await
-                        .expect("Failed to setup clickhouse");
-                }
+        let (grpc_shutdown, raw_client_channels) = runtime.block_on(async move {
+            // Create shared raw client channels
+            let raw_client_channels = Arc::new(RwLock::new(Vec::new()));
 
-                let (debug_client_tx, debug_client_rx) = mpsc::unbounded_channel();
+            let grpc_shutdown =
+                GrpcService::create(config.grpc, raw_client_channels.clone(), is_reload)
+                    .await
+                    .map_err(|error| GeyserPluginError::Custom(format!("{error:?}").into()))?;
 
-                // Create shared raw client channels
-                let raw_client_channels = Arc::new(RwLock::new(Vec::new()));
-
-                let (snapshot_channel, grpc_channel, grpc_shutdown) = GrpcService::create(
-                    config.tokio,
-                    config.grpc,
-                    config.debug_clients_http.then_some(debug_client_tx),
-                    raw_client_channels.clone(),
-                    is_reload,
-                )
-                .await
-                .map_err(|error| GeyserPluginError::Custom(format!("{error:?}").into()))?;
-                let prometheus = PrometheusService::new(
-                    config.prometheus,
-                    config.debug_clients_http.then_some(debug_client_rx),
-                )
-                .await
-                .map_err(|error| GeyserPluginError::Custom(Box::new(error)))?;
-
-                #[cfg(feature = "statsd")]
-                {
-                    let recorder = StatsdBuilder::from("0.0.0.0", 7998)
-                        .with_queue_size(50_000)
-                        .with_buffer_size(1024)
-                        .build(Some("yellowstone_geyser"))
-                        .expect("Could not create StatsdRecorder");
-
-                    set_global_recorder(recorder).expect("Could not set global recorder");
-                }
-
-                Ok::<_, GeyserPluginError>((
-                    snapshot_channel,
-                    grpc_channel,
-                    grpc_shutdown,
-                    prometheus,
-                    raw_client_channels,
-                ))
-            })?;
+            Ok::<_, GeyserPluginError>((grpc_shutdown, raw_client_channels))
+        })?;
 
         self.inner = Some(PluginInner {
             runtime,
-            snapshot_channel: Mutex::new(snapshot_channel),
-            snapshot_channel_closed: AtomicBool::new(false),
-            grpc_channel,
             grpc_shutdown,
-            prometheus,
             raw_client_channels,
         });
 
@@ -171,80 +107,30 @@ impl GeyserPlugin for Plugin {
     fn on_unload(&mut self) {
         if let Some(inner) = self.inner.take() {
             inner.grpc_shutdown.notify_one();
-            drop(inner.grpc_channel);
-            inner.prometheus.shutdown();
             inner.runtime.shutdown_timeout(Duration::from_secs(30));
         }
     }
 
     fn update_account(
         &self,
-        account: ReplicaAccountInfoVersions,
-        slot: u64,
-        is_startup: bool,
+        _account: ReplicaAccountInfoVersions,
+        _slot: u64,
+        _is_startup: bool,
     ) -> PluginResult<()> {
-        self.with_inner(|inner| {
-            let account = match account {
-                ReplicaAccountInfoVersions::V0_0_1(_info) => {
-                    unreachable!("ReplicaAccountInfoVersions::V0_0_1 is not supported")
-                }
-                ReplicaAccountInfoVersions::V0_0_2(_info) => {
-                    unreachable!("ReplicaAccountInfoVersions::V0_0_2 is not supported")
-                }
-                ReplicaAccountInfoVersions::V0_0_3(info) => info,
-            };
-
-            if is_startup {
-                if let Some(channel) = inner.snapshot_channel.lock().unwrap().as_ref() {
-                    let message =
-                        Message::Account(MessageAccount::from_geyser(account, slot, is_startup));
-
-                    clickhouse_sink::event::record(message.get_latency_payload("ys_geyser_recv"));
-
-                    match channel.send(Box::new(message)) {
-                        Ok(()) => metrics::message_queue_size_inc(),
-                        Err(_) => {
-                            if !inner.snapshot_channel_closed.swap(true, Ordering::Relaxed) {
-                                log::error!(
-                                    "failed to send message to startup queue: channel closed"
-                                )
-                            }
-                        }
-                    }
-                }
-            } else {
-                let message =
-                    Message::Account(MessageAccount::from_geyser(account, slot, is_startup));
-
-                clickhouse_sink::event::record(message.get_latency_payload("ys_geyser_recv"));
-
-                inner.send_message(message);
-            }
-
-            Ok(())
-        })
+        Ok(())
     }
 
     fn notify_end_of_startup(&self) -> PluginResult<()> {
-        self.with_inner(|inner| {
-            let _snapshot_channel = inner.snapshot_channel.lock().unwrap().take();
-            Ok(())
-        })
+        Ok(())
     }
 
     fn update_slot_status(
         &self,
-        slot: u64,
-        parent: Option<u64>,
-        status: &SlotStatus,
+        _slot: u64,
+        _parent: Option<u64>,
+        _status: &SlotStatus,
     ) -> PluginResult<()> {
-        self.with_inner(|inner| {
-            let message = Message::Slot(MessageSlot::from_geyser(slot, parent, status));
-            clickhouse_sink::event::record(message.get_latency_payload("ys_geyser_recv"));
-            inner.send_message(message);
-            metrics::update_slot_status(status, slot);
-            Ok(())
-        })
+        Ok(())
     }
 
     fn notify_transaction(
@@ -266,56 +152,22 @@ impl GeyserPlugin for Plugin {
             };
 
             let message = Message::Transaction(transaction);
-            clickhouse_sink::event::record(message.get_latency_payload("ys_geyser_recv"));
             inner.send_message(message);
 
             Ok(())
         })
     }
 
-    fn notify_entry(&self, entry: ReplicaEntryInfoVersions) -> PluginResult<()> {
-        self.with_inner(|inner| {
-            #[allow(clippy::infallible_destructuring_match)]
-            let entry = match entry {
-                ReplicaEntryInfoVersions::V0_0_1(_entry) => {
-                    unreachable!("ReplicaEntryInfoVersions::V0_0_1 is not supported")
-                }
-                ReplicaEntryInfoVersions::V0_0_2(entry) => entry,
-            };
-
-            let message = Message::Entry(Arc::new(MessageEntry::from_geyser(entry)));
-            clickhouse_sink::event::record(message.get_latency_payload("ys_geyser_recv"));
-            inner.send_message(message);
-
-            Ok(())
-        })
+    fn notify_entry(&self, _entry: ReplicaEntryInfoVersions) -> PluginResult<()> {
+        Ok(())
     }
 
-    fn notify_block_metadata(&self, blockinfo: ReplicaBlockInfoVersions<'_>) -> PluginResult<()> {
-        self.with_inner(|inner| {
-            let blockinfo = match blockinfo {
-                ReplicaBlockInfoVersions::V0_0_1(_info) => {
-                    unreachable!("ReplicaBlockInfoVersions::V0_0_1 is not supported")
-                }
-                ReplicaBlockInfoVersions::V0_0_2(_info) => {
-                    unreachable!("ReplicaBlockInfoVersions::V0_0_2 is not supported")
-                }
-                ReplicaBlockInfoVersions::V0_0_3(_info) => {
-                    unreachable!("ReplicaBlockInfoVersions::V0_0_3 is not supported")
-                }
-                ReplicaBlockInfoVersions::V0_0_4(info) => info,
-            };
-
-            let message = Message::BlockMeta(Arc::new(MessageBlockMeta::from_geyser(blockinfo)));
-            clickhouse_sink::event::record(message.get_latency_payload("ys_geyser_recv"));
-            inner.send_message(message);
-
-            Ok(())
-        })
+    fn notify_block_metadata(&self, _blockinfo: ReplicaBlockInfoVersions<'_>) -> PluginResult<()> {
+        Ok(())
     }
 
     fn account_data_notifications_enabled(&self) -> bool {
-        true
+        false
     }
 
     fn account_data_snapshot_notifications_enabled(&self) -> bool {
@@ -327,7 +179,7 @@ impl GeyserPlugin for Plugin {
     }
 
     fn entry_notifications_enabled(&self) -> bool {
-        true
+        false
     }
 }
 

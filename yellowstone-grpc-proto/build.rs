@@ -25,30 +25,6 @@ fn main() -> anyhow::Result<()> {
         .package("geyser")
         .method(
             Method::builder()
-                .name("subscribe")
-                .route_name("Subscribe")
-                .input_type("crate::geyser::SubscribeRequest")
-                // .output_type("crate::geyser::SubscribeUpdate")
-                .output_type("crate::plugin::filter::message::FilteredUpdate")
-                .codec_path("tonic::codec::ProstCodec")
-                // .codec_path("crate::plugin::codec::SubscribeCodec")
-                .client_streaming()
-                .server_streaming()
-                .build(),
-        )
-        .method(
-            Method::builder()
-                .name("subscribe_batch")
-                .route_name("SubscribeBatch")
-                .input_type("crate::geyser::SubscribeRequest")
-                .output_type("crate::plugin::filter::message::FilteredUpdateBatch")
-                .codec_path("tonic::codec::ProstCodec")
-                .client_streaming()
-                .server_streaming()
-                .build(),
-        )
-        .method(
-            Method::builder()
                 .name("subscribe_raw")
                 .route_name("SubscribeRaw")
                 .input_type("crate::geyser::SubscribeRequest")

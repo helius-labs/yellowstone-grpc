@@ -6,8 +6,8 @@ use {
         sync::{Arc, RwLock},
         time::Duration,
     },
-    tokio::{signal, sync::mpsc},
-    yellowstone_grpc_geyser::{config::Config, grpc::GrpcService, metrics::PrometheusService},
+    tokio::signal,
+    yellowstone_grpc_geyser::{config::Config, grpc::GrpcService},
 };
 
 #[derive(Debug, Parser)]
@@ -34,54 +34,26 @@ async fn main() -> Result<()> {
     solana_logger::setup_with_default(&config.log.level);
     info!("Starting Yellowstone gRPC server...");
 
-    // Initialize Clickhouse if configured
-    if let Some(clickhouse_config) = config.clickhouse {
-        clickhouse_sink::init(clickhouse_config)
-            .await
-            .expect("Failed to setup clickhouse");
-        info!("Clickhouse sink initialized");
-    }
-
-    // Create debug client channels
-    let (debug_client_tx, debug_client_rx) = mpsc::unbounded_channel();
-
     // Store address before moving config
     let grpc_address = config.grpc.address;
-    let prometheus_address = config.prometheus.as_ref().map(|p| p.address);
 
     // Create shared raw client channels
     let raw_client_channels = Arc::new(RwLock::new(Vec::new()));
 
     // Create gRPC service
-    let (snapshot_channel, grpc_channel, grpc_shutdown) = GrpcService::create(
-        config.tokio,
+    let grpc_shutdown = GrpcService::create(
         config.grpc,
-        config.debug_clients_http.then_some(debug_client_tx),
         raw_client_channels.clone(),
         false, // is_reload = false for standalone server
     )
     .await?;
 
-    // Create Prometheus service
-    let prometheus = PrometheusService::new(
-        config.prometheus,
-        config.debug_clients_http.then_some(debug_client_rx),
-    )
-    .await?;
-
     info!("gRPC server started on address: {}", grpc_address);
-
-    if let Some(prometheus_addr) = prometheus_address {
-        info!("Prometheus metrics available at: {}", prometheus_addr);
-    }
 
     // Optional test mode - simulate some messages
     if args.test_mode {
         info!("Running in test mode - simulating messages");
-        tokio::spawn(simulate_messages(
-            grpc_channel.clone(),
-            raw_client_channels.clone(),
-        ));
+        tokio::spawn(simulate_messages(raw_client_channels.clone()));
     }
 
     // Wait for shutdown signal
@@ -96,11 +68,6 @@ async fn main() -> Result<()> {
 
     // Shutdown services
     grpc_shutdown.notify_one();
-    drop(grpc_channel);
-    prometheus.shutdown();
-
-    // Close snapshot channel if it exists
-    drop(snapshot_channel);
 
     info!("Server shutdown complete");
     Ok(())
@@ -108,7 +75,6 @@ async fn main() -> Result<()> {
 
 #[allow(unused)]
 async fn simulate_messages(
-    grpc_channel: mpsc::UnboundedSender<yellowstone_grpc_proto::plugin::message::Message>,
     raw_client_channels: Arc<
         RwLock<
             Vec<(
@@ -140,7 +106,7 @@ async fn simulate_messages(
             created_at: Timestamp::from(SystemTime::now()),
         });
 
-        // Send to raw clients first (same logic as plugin.rs)
+        // Send to raw clients
         if let Ok(raw_clients) = raw_client_channels.read() {
             if !raw_clients.is_empty() {
                 for (id, tx) in raw_clients.iter() {
@@ -150,11 +116,6 @@ async fn simulate_messages(
                     }
                 }
             }
-        }
-
-        // Then send to regular geyser_loop pipeline
-        if grpc_channel.send(message).is_err() {
-            break;
         }
 
         slot += 1;

@@ -10,7 +10,6 @@ package geyser;
 service Geyser {
   rpc Subscribe(stream SubscribeRequest) returns (stream SubscribeUpdate) {}
   rpc SubscribeRaw(stream SubscribeRequest) returns (stream SubscribeUpdate) {}
-  rpc SubscribeBatch(stream SubscribeRequest) returns (stream SubscribeUpdateBatch) {}
   rpc Ping(PingRequest) returns (PongResponse) {}
   rpc GetLatestBlockhash(GetLatestBlockhashRequest) returns (GetLatestBlockhashResponse) {}
   rpc GetBlockHeight(GetBlockHeightRequest) returns (GetBlockHeightResponse) {}
