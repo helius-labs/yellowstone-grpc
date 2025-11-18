@@ -73,7 +73,6 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-#[allow(unused)]
 async fn simulate_messages(
     raw_client_channels: Arc<
         RwLock<
@@ -85,14 +84,14 @@ async fn simulate_messages(
     >,
 ) {
     use {
-        log::warn,
+        log::{info, warn},
         prost_types::Timestamp,
         std::time::SystemTime,
         yellowstone_grpc_proto::plugin::message::{Message, MessageSlot, SlotStatus},
     };
 
     let mut slot = 1000u64;
-    let mut interval = tokio::time::interval(Duration::from_secs(1));
+    let mut interval = tokio::time::interval(Duration::from_micros(100));
 
     loop {
         interval.tick().await;
@@ -120,7 +119,7 @@ async fn simulate_messages(
 
         slot += 1;
 
-        if slot % 10 == 0 {
+        if slot % 1000 == 0 {
             info!("Simulated slot: {}", slot);
         }
     }

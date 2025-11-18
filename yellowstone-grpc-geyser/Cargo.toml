@@ -19,6 +19,9 @@ name = "config-check"
 [[bin]]
 name = "grpc-server"
 
+[[bin]]
+name = "grpc-client"
+
 [dependencies]
 affinity-linux = { workspace = true }
 metrics-exporter-statsd = { workspace = true }
@@ -30,6 +33,7 @@ bs58 = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
 crossbeam-channel = { workspace = true }
 clickhouse-sink = { path = "../clickhouse-sink" }
+env_logger = { workspace = true }
 futures = { workspace = true }
 hostname = { workspace = true }
 http = { workspace = true }
