@@ -1,4 +1,5 @@
 pub use tonic::{service::Interceptor, transport::ClientTlsConfig};
+use yellowstone_grpc_proto::geyser::{SubscribePreprocessedRequest, SubscribePreprocessedUpdate};
 use {
     bytes::Bytes,
     futures::{
@@ -136,6 +137,42 @@ impl<F: Interceptor> GeyserGrpcClient<F> {
             .map(|(_sink, stream)| stream)
     }
 
+    pub async fn subscribe_preprocessed(
+        &mut self,
+    ) -> GeyserGrpcClientResult<(
+        impl Sink<SubscribePreprocessedRequest, Error = mpsc::SendError>,
+        impl Stream<Item = Result<SubscribePreprocessedUpdate, Status>>,
+    )> {
+        self.subscribe_preprocessed_with_request(None).await
+    }
+
+    pub async fn subscribe_preprocessed_with_request(
+        &mut self,
+        request: Option<SubscribePreprocessedRequest>,
+    ) -> GeyserGrpcClientResult<(
+        impl Sink<SubscribePreprocessedRequest, Error = mpsc::SendError>,
+        impl Stream<Item = Result<SubscribePreprocessedUpdate, Status>>,
+    )> {
+        let (mut subscribe_tx, subscribe_rx) = mpsc::unbounded();
+        if let Some(request) = request {
+            subscribe_tx
+                .send(request)
+                .await
+                .map_err(GeyserGrpcClientError::SubscribeSendError)?;
+        }
+        let response: Response<Streaming<SubscribePreprocessedUpdate>> =
+            self.geyser.subscribe_preprocessed(subscribe_rx).await?;
+        Ok((subscribe_tx, response.into_inner()))
+    }
+
+    pub async fn subscribe_preprocessed_once(
+        &mut self,
+        request: SubscribePreprocessedRequest,
+    ) -> GeyserGrpcClientResult<impl Stream<Item = Result<SubscribePreprocessedUpdate, Status>>> {
+        self.subscribe_preprocessed_with_request(Some(request))
+            .await
+            .map(|(_sink, stream)| stream)
+    }
     // RPC calls
     pub async fn subscribe_replay_info(
         &mut self,
