@@ -32,6 +32,7 @@ message SubscribePreprocessedRequestFilterTransactions {
   repeated string account_include = 3;
   repeated string account_exclude = 4;
   repeated string account_required = 5;
+  optional uint64 from_slot = 20;
 }
 
 message SubscribePreprocessedUpdate {
