@@ -1,6 +1,6 @@
 # Rust client for Solana gRPC interface - Preprocessed Transactions
 
-This guide explains how to use the preprocessed transactions feature with the Solana geyser gRPC client.
+This functionality only exists in this feature branch but we aim to merge it soon to the primary Yellowstone repo.
 
 ## Prerequisites
 
