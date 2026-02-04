@@ -20,7 +20,8 @@ use {
     solana_pubkey::Pubkey,
     solana_signature::Signature,
     std::{
-        collections::HashSet,
+        collections::{hash_map::DefaultHasher, HashSet},
+        hash::Hasher,
         ops::{Deref, DerefMut},
         sync::Arc,
         time::SystemTime,
@@ -600,6 +601,57 @@ impl Message {
             UpdateOneof::Entry(msg) => {
                 Self::Entry(Arc::new(MessageEntry::from_update_oneof(&msg, created_at)?))
             }
+        })
+    }
+
+    fn get_message_id_hash(&self) -> String {
+        let mut hasher = DefaultHasher::new();
+
+        match self {
+            Self::Account(msg) => {
+                hasher.write(msg.account.pubkey.as_ref());
+                hasher.write(&msg.account.write_version.to_le_bytes());
+            }
+            Self::Transaction(msg) => {
+                hasher.write(msg.transaction.signature.as_ref());
+            }
+            Self::Slot(msg) => {
+                hasher.write(&msg.slot.to_le_bytes());
+                hasher.write(&(msg.status as u8).to_le_bytes());
+            }
+            Self::Entry(msg) => {
+                hasher.write(&msg.slot.to_le_bytes());
+                hasher.write(&msg.index.to_le_bytes());
+            }
+            Self::BlockMeta(msg) => {
+                hasher.write(&msg.slot.to_le_bytes());
+            }
+            Self::Block(msg) => {
+                hasher.write(&msg.meta.slot.to_le_bytes());
+            }
+        }
+
+        format!("{:x}", hasher.finish())
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Message::Slot(_) => "slot",
+            Message::Account(_) => "account",
+            Message::Transaction(_) => "transaction",
+            Message::Entry(_) => "entry",
+            Message::BlockMeta(_) => "block_meta",
+            Message::Block(_) => "block",
+        }
+    }
+
+    pub fn get_latency_payload(&self, stage: &str) -> serde_json::Value {
+        serde_json::json!({
+            "metric_type": "latency",
+            "message_id": self.get_message_id_hash(),
+            "stage": stage,
+            "slot": self.get_slot(),
+            "message_type": self.as_str()
         })
     }
 }

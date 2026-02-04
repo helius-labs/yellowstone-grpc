@@ -56,6 +56,9 @@ solana-pubkey = { workspace = true }
 # Yellowstone
 yellowstone-grpc-proto = { workspace = true, features = ["convert", "plugin", "tonic", "account-data-as-bytes"] }
 
+# Laserstream
+clickhouse-sink = { path = "../clickhouse-sink" }
+
 [build-dependencies]
 anyhow = { workspace = true }
 cargo-lock = { workspace = true }

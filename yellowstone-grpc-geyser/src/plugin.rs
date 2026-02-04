@@ -1,7 +1,7 @@
 use {
     crate::{
         config::Config,
-        grpc::GrpcService,
+        grpc::{GrpcService, RawClientChannels},
         metrics::{self, PrometheusService},
     },
     agave_geyser_plugin_interface::geyser_plugin_interface::{
@@ -13,7 +13,7 @@ use {
         concat, env,
         sync::{
             atomic::{AtomicBool, Ordering},
-            Arc, Mutex,
+            Arc, Mutex, RwLock,
         },
         time::Duration,
     },
@@ -35,10 +35,24 @@ pub struct PluginInner {
     grpc_channel: mpsc::UnboundedSender<Message>,
     plugin_cancellation_token: CancellationToken,
     plugin_task_tracker: TaskTracker,
+    raw_client_channels: RawClientChannels,
 }
 
 impl PluginInner {
     fn send_message(&self, message: Message) {
+        // Send to raw clients first (bypasses all processing)
+        if let Ok(raw_clients) = self.raw_client_channels.read() {
+            if !raw_clients.is_empty() {
+                for (id, tx) in raw_clients.iter() {
+                    if tx.send(message.clone()).is_err() {
+                        // Channel disconnected, will be cleaned up later
+                        log::warn!("Raw client {} channel disconnected", id);
+                    }
+                }
+            }
+        }
+
+        // Then send to regular geyser_loop pipeline
         if self.grpc_channel.send(message).is_ok() {
             metrics::message_queue_size_inc();
         }
@@ -105,6 +119,10 @@ impl GeyserPlugin for Plugin {
             .build()
             .map_err(|error| GeyserPluginError::Custom(Box::new(error)))?;
 
+        // Create shared raw client channels
+        let raw_client_channels: RawClientChannels = Arc::new(RwLock::new(Vec::new()));
+        let raw_client_channels_for_grpc = raw_client_channels.clone();
+
         let result = runtime.block_on(async move {
             let (debug_client_tx, debug_client_rx) = mpsc::unbounded_channel();
             // Create prometheus service First so if it fails the plugin doesn't spawn geyser tasks unnecessarily.
@@ -123,6 +141,7 @@ impl GeyserPlugin for Plugin {
                 is_reload,
                 grpc_cancellation_token,
                 grpc_task_tracker,
+                raw_client_channels_for_grpc,
             )
             .await
             .map_err(|error| GeyserPluginError::Custom(format!("{error:?}").into()))?;
@@ -141,6 +160,7 @@ impl GeyserPlugin for Plugin {
             grpc_channel,
             plugin_cancellation_token,
             plugin_task_tracker,
+            raw_client_channels,
         });
 
         Ok(())
