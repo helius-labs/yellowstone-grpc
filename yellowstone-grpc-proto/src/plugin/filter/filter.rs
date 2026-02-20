@@ -346,12 +346,7 @@ impl FilterAccounts {
         filter.match_account(&message.account.pubkey);
         filter.match_owner(&message.account.owner);
         filter.match_data_lamports(&message.account.data, message.account.lamports);
-        // HACK: Used to indicate that the message is compressed
-        let mut filters = filter.get_filters();
-        if !filters.is_empty() {
-            let filter_name = FilterName::new("lz4");
-            filters = smallvec::smallvec![filter_name];
-        }
+        let filters = filter.get_filters();
         filtered_updates_once_owned!(
             filters,
             FilteredUpdateOneof::account(message, accounts_data_slice.clone()),
