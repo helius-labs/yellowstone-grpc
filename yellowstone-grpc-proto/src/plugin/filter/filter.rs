@@ -25,8 +25,8 @@ use {
                 name::{FilterName, FilterNameError, FilterNames},
             },
             message::{
-                CommitmentLevel, Message, MessageAccount, MessageBlock, MessageBlockMeta,
-                MessageEntry, MessageSlot, MessageTransaction, SlotStatus,
+                CommitmentLevel, Message, MessageAccount, MessageAccountInfo, MessageBlock,
+                MessageBlockMeta, MessageEntry, MessageSlot, MessageTransaction, SlotStatus,
             },
         },
     },
@@ -935,21 +935,26 @@ impl FilterBlocks {
                 vec![]
             };
 
-            #[allow(clippy::unnecessary_filter_map)]
             let accounts = if inner.include_accounts == Some(true) {
-                message
-                    .accounts
-                    .iter()
-                    .filter_map(|account| {
-                        if !inner.account_include.is_empty()
-                            && !inner.account_include.contains(&account.pubkey)
-                        {
-                            None
-                        } else {
-                            Some(Arc::clone(account))
+                let mut accounts_map: HashMap<Pubkey, Arc<MessageAccountInfo>> = HashMap::new();
+                for account in &message.accounts {
+                    if !inner.account_include.is_empty()
+                        && !inner.account_include.contains(&account.pubkey)
+                    {
+                        continue;
+                    }
+                    match accounts_map.entry(account.pubkey) {
+                        std::collections::hash_map::Entry::Occupied(mut entry) => {
+                            if account.write_version > entry.get().write_version {
+                                entry.insert(Arc::clone(account));
+                            }
                         }
-                    })
-                    .collect::<Vec<_>>()
+                        std::collections::hash_map::Entry::Vacant(entry) => {
+                            entry.insert(Arc::clone(account));
+                        }
+                    }
+                }
+                accounts_map.into_values().collect::<Vec<_>>()
             } else {
                 vec![]
             };
