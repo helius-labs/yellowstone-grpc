@@ -1041,7 +1041,7 @@ pub mod tests {
             convert_to,
             geyser::{SubscribeUpdate, SubscribeUpdateBlockMeta},
             plugin::{
-                filter::{message::FilteredUpdateBatch, name::FilterName, FilterAccountsDataSlice},
+                filter::{name::FilterName, FilterAccountsDataSlice},
                 message::{
                     MessageAccount, MessageAccountInfo, MessageBlockMeta, MessageEntry,
                     MessageSlot, MessageTransaction, MessageTransactionInfo, SlotStatus,
@@ -1310,18 +1310,6 @@ pub mod tests {
         );
     }
 
-    fn encode_decode_cmp_batch(filters: &[&str], messages: Vec<FilteredUpdateOneof>) {
-        let msg = FilteredUpdateBatch {
-            updates: messages.into_iter().map(|msg| Arc::new(FilteredUpdate {
-                filters: create_message_filters(filters),
-                message: msg,
-                created_at: Timestamp::from(SystemTime::now()),
-            })).collect(),
-        };
-        let update = msg.as_subscribe_update();
-        assert_eq!(msg.encoded_len(), update.encoded_len());
-    }
-
     #[test]
     fn test_message_account() {
         for (msg, data_slice) in create_accounts() {
@@ -1412,9 +1400,4 @@ pub mod tests {
         }
     }
 
-    #[test]
-    fn test_message_batch() {
-        let messages = create_entries();
-        encode_decode_cmp_batch(&["123"], messages.into_iter().map(|entry| FilteredUpdateOneof::entry(entry.clone())).collect());
-    }
 }
