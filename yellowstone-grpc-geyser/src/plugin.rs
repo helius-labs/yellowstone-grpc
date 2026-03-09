@@ -314,11 +314,15 @@ impl GeyserPlugin for Plugin {
                 if PluginInner::should_buffer_account(&msg_account.account.owner, msg_account.account.executable) {
                     // Non-executable BPF loader account (programdata upload in progress).
                     // Buffer and dedupe by write_version until slot is processed.
+                    // Wrap in Message to record latency, then unwrap to avoid cloning.
+                    let message = Message::Account(msg_account);
                     clickhouse_sink::event::record(
-                        Message::Account(msg_account.clone())
-                            .get_latency_payload("ys_geyser_recv"),
+                        message.get_latency_payload("ys_geyser_recv"),
                     );
-                    inner.buffer_deploy_account(msg_account);
+                    match message {
+                        Message::Account(account) => inner.buffer_deploy_account(account),
+                        _ => unreachable!(),
+                    }
                 } else {
                     // If this is an executable BPF account (finalization), evict any
                     // buffered non-executable entries for this (slot, pubkey) so we
