@@ -277,6 +277,14 @@ impl PrometheusService {
         })
     }
 
+    #[cfg(test)]
+    pub fn new_noop() -> Self {
+        Self {
+            debug_clients_statuses: None,
+            shutdown: Arc::new(Notify::new()),
+        }
+    }
+
     pub fn shutdown(self) {
         drop(self.debug_clients_statuses);
         self.shutdown.notify_one();
