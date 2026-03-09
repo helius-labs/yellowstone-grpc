@@ -114,6 +114,22 @@ impl PluginInner {
         }
     }
 
+    /// Drop all buffered entries for slots older than the given finalized slot.
+    /// This prevents memory leaks if a slot never reaches Processed (e.g. skipped/dead slots).
+    fn cleanup_old_deploy_buffer_entries(&self, finalized_slot: u64) {
+        let mut buffer = self.deploy_buffer.lock().unwrap();
+        let before = buffer.len();
+        buffer.retain(|(s, _), _| *s >= finalized_slot);
+        let removed = before - buffer.len();
+        if removed > 0 {
+            log::info!(
+                "Cleaned up {} stale deploy buffer entries older than finalized slot {}",
+                removed,
+                finalized_slot
+            );
+        }
+    }
+
     /// Flush all buffered deploy accounts for the given slot, sending them downstream.
     fn flush_deploy_buffer(&self, slot: u64) {
         let accounts: Vec<MessageAccount> = {
@@ -340,6 +356,12 @@ impl GeyserPlugin for Plugin {
             // Flush buffered BPF loader account updates when slot reaches Processed
             if matches!(status, SlotStatus::Processed) {
                 inner.flush_deploy_buffer(slot);
+            }
+
+            // Clean up any stale buffer entries from slots that never reached Processed
+            // (e.g. skipped or dead slots) to prevent unbounded memory growth.
+            if matches!(status, SlotStatus::Rooted) {
+                inner.cleanup_old_deploy_buffer_entries(slot);
             }
 
             let message = Message::Slot(MessageSlot::from_geyser(slot, parent, status));
@@ -660,6 +682,36 @@ mod tests {
         inner.flush_deploy_buffer(100);
         let buffer = inner.deploy_buffer.lock().unwrap();
         assert!(buffer.is_empty());
+    }
+
+    #[test]
+    fn test_cleanup_removes_old_slots() {
+        let inner = make_test_inner();
+        let bpf_id = PluginInner::BPF_LOADER_UPGRADEABLE_ID;
+        let pubkey = Pubkey::new_unique();
+
+        // Buffer entries across multiple slots
+        inner.buffer_deploy_account(make_account(pubkey, bpf_id, 98, 1));
+        inner.buffer_deploy_account(make_account(pubkey, bpf_id, 99, 2));
+        inner.buffer_deploy_account(make_account(pubkey, bpf_id, 100, 3));
+        inner.buffer_deploy_account(make_account(pubkey, bpf_id, 101, 4));
+
+        // Finalize at slot 100 — should drop slots < 100
+        inner.cleanup_old_deploy_buffer_entries(100);
+
+        let buffer = inner.deploy_buffer.lock().unwrap();
+        assert_eq!(buffer.len(), 2);
+        assert!(!buffer.contains_key(&(98, pubkey)));
+        assert!(!buffer.contains_key(&(99, pubkey)));
+        assert!(buffer.contains_key(&(100, pubkey)));
+        assert!(buffer.contains_key(&(101, pubkey)));
+    }
+
+    #[test]
+    fn test_cleanup_empty_buffer_is_noop() {
+        let inner = make_test_inner();
+        inner.cleanup_old_deploy_buffer_entries(100);
+        assert!(inner.deploy_buffer.lock().unwrap().is_empty());
     }
 
     #[test]
