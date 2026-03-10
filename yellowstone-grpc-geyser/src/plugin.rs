@@ -90,7 +90,7 @@ impl PluginInner {
     fn evict_from_deploy_buffer(&self, slot: u64, pubkey: &Pubkey) {
         let mut buffer = self.deploy_buffer.lock().unwrap();
         if buffer.remove(&(slot, *pubkey)).is_some() {
-            log::info!(
+            log::debug!(
                 "Evicted buffered programdata for {} in slot {} (account finalized)",
                 pubkey,
                 slot
@@ -122,7 +122,7 @@ impl PluginInner {
         buffer.retain(|(s, _), _| *s >= finalized_slot);
         let removed = before - buffer.len();
         if removed > 0 {
-            log::info!(
+            log::debug!(
                 "Cleaned up {} stale deploy buffer entries older than finalized slot {}",
                 removed,
                 finalized_slot
@@ -146,7 +146,7 @@ impl PluginInner {
         };
 
         if !accounts.is_empty() {
-            log::info!(
+            log::debug!(
                 "Flushing {} buffered BPF loader account update(s) for slot {}",
                 accounts.len(),
                 slot
