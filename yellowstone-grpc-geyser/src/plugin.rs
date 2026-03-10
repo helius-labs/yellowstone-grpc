@@ -357,11 +357,6 @@ impl GeyserPlugin for Plugin {
         status: &SlotStatus,
     ) -> PluginResult<()> {
         self.with_inner(|inner| {
-            // Flush buffered BPF loader account updates when slot reaches Processed
-            if matches!(status, SlotStatus::Processed) {
-                inner.flush_deploy_buffer(slot);
-            }
-
             // Clean up any stale buffer entries from slots that never reached Processed
             // (e.g. skipped or dead slots) to prevent unbounded memory growth.
             if matches!(status, SlotStatus::Rooted) {
@@ -434,6 +429,7 @@ impl GeyserPlugin for Plugin {
                 }
                 ReplicaBlockInfoVersions::V0_0_4(info) => info,
             };
+            inner.flush_deploy_buffer(blockinfo.slot);
 
             let message = Message::BlockMeta(Arc::new(MessageBlockMeta::from_geyser(blockinfo)));
             clickhouse_sink::event::record(message.get_latency_payload("ys_geyser_recv"));
