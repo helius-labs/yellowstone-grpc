@@ -77,10 +77,15 @@ impl AccountBuffer {
             .unwrap_or_default()
     }
 
-    /// Remove entries for all slots <= rooted_slot.
-    fn cleanup(&mut self, rooted_slot: u64) {
-        self.slots.retain(|s, _| *s > rooted_slot);
+    /// Drain all entries across all slots.
+    fn drain_all(&mut self) -> Vec<MessageAccount> {
+        let mut out = Vec::new();
+        for (_slot, slot_map) in self.slots.drain() {
+            out.extend(slot_map.into_values());
+        }
+        out
     }
+
 }
 
 /// Spawns the buffer consumer task. Receives all messages, deduplicates large
@@ -92,10 +97,14 @@ fn spawn_buffer_task(
     grpc_tx: mpsc::UnboundedSender<Message>,
     raw_client_channels: Arc<RwLock<Vec<(u64, crossbeam_channel::Sender<Message>)>>>,
     size_threshold: usize,
+    flush_interval: Duration,
     shutdown: Arc<Notify>,
 ) {
     runtime.spawn(async move {
         let mut buffer = AccountBuffer::new();
+        let mut flush_timer = tokio::time::interval(flush_interval);
+        // The first tick completes immediately; skip it so we don't flush an empty buffer.
+        flush_timer.tick().await;
 
         let forward = |msg: Message| {
             // Send to raw clients (deduplicated, same as grpc clients)
@@ -140,15 +149,16 @@ fn spawn_buffer_task(
                             }
                             forward(msg);
                         }
-                        Message::Slot(ref slot_msg) if slot_msg.status == MessageSlotStatus::Finalized => {
-                            // Clean up stale buffer entries on Rooted/Finalized
-                            buffer.cleanup(slot_msg.slot);
-                            forward(msg);
-                        }
                         _ => {
                             // Everything else: forward immediately
                             forward(msg);
                         }
+                    }
+                }
+                _ = flush_timer.tick() => {
+                    // Periodically flush all deduped accounts
+                    for account in buffer.drain_all() {
+                        forward(Message::Account(account));
                     }
                 }
                 _ = shutdown.notified() => break,
@@ -293,9 +303,11 @@ impl GeyserPlugin for Plugin {
 
         // Spawn buffer task if account buffering is configured
         let buffer_tx = account_buffer_config.map(|cfg| {
+            let flush_interval = Duration::from_millis(cfg.flush_interval_ms);
             log::info!(
-                "Account buffer enabled: size_threshold={}",
-                cfg.size_threshold
+                "Account buffer enabled: size_threshold={}, flush_interval={:?}",
+                cfg.size_threshold,
+                flush_interval,
             );
             let (tx, rx) = mpsc::unbounded_channel();
             spawn_buffer_task(
@@ -304,6 +316,7 @@ impl GeyserPlugin for Plugin {
                 grpc_channel.clone(),
                 raw_client_channels.clone(),
                 cfg.size_threshold,
+                flush_interval,
                 grpc_shutdown.clone(),
             );
             tx
@@ -526,6 +539,7 @@ mod tests {
                 grpc_tx.clone(),
                 raw_client_channels.clone(),
                 t,
+                Duration::from_secs(3600), // long interval so tests control flushing explicitly
                 Arc::new(Notify::new()),
             );
             tx
@@ -580,7 +594,8 @@ mod tests {
     /// Let the tokio runtime process pending tasks (the buffer consumer).
     fn flush_runtime(inner: &PluginInner) {
         inner.runtime.block_on(async {
-            tokio::task::yield_now().await;
+            // Sleep briefly to let the buffer task fully process pending messages.
+            tokio::time::sleep(Duration::from_millis(10)).await;
         });
     }
 

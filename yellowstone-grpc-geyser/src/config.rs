@@ -35,7 +35,7 @@ pub struct Config {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ConfigAccountBuffer {
-    /// Accounts with data length >= this threshold will be buffered (default: 1MB).
+    /// Accounts with data length >= this threshold will be buffered (default: 256KB).
     /// Buffered accounts are deduplicated per (slot, pubkey), keeping only the highest
     /// write_version, and flushed when BlockMeta arrives for that slot.
     #[serde(
@@ -43,11 +43,22 @@ pub struct ConfigAccountBuffer {
         deserialize_with = "deserialize_int_str"
     )]
     pub size_threshold: usize,
+    /// Interval in milliseconds to periodically flush all buffered accounts (default: 100ms).
+    /// This ensures deduped accounts are forwarded even if BlockMeta is delayed.
+    #[serde(
+        default = "ConfigAccountBuffer::default_flush_interval_ms",
+        deserialize_with = "deserialize_int_str"
+    )]
+    pub flush_interval_ms: u64,
 }
 
 impl ConfigAccountBuffer {
     const fn default_size_threshold() -> usize {
         256 * 1024 // 256KB
+    }
+
+    const fn default_flush_interval_ms() -> u64 {
+        100
     }
 }
 
