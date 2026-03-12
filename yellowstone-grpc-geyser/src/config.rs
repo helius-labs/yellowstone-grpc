@@ -47,7 +47,7 @@ pub struct ConfigAccountBuffer {
 
 impl ConfigAccountBuffer {
     const fn default_size_threshold() -> usize {
-        1_048_576 // 1MB
+        256 * 1024 // 256KB
     }
 }
 
