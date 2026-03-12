@@ -28,7 +28,7 @@ pub struct Config {
     pub debug_clients_http: bool,
     #[serde(default)]
     pub clickhouse: Option<clickhouse_sink::ClickhouseConfig>,
-    #[serde(default)]
+    #[serde(default = "Config::default_account_buffer")]
     pub account_buffer: Option<ConfigAccountBuffer>,
 }
 
@@ -52,6 +52,15 @@ pub struct ConfigAccountBuffer {
     pub flush_interval_ms: u64,
 }
 
+impl Default for ConfigAccountBuffer {
+    fn default() -> Self {
+        Self {
+            size_threshold: Self::default_size_threshold(),
+            flush_interval_ms: Self::default_flush_interval_ms(),
+        }
+    }
+}
+
 impl ConfigAccountBuffer {
     const fn default_size_threshold() -> usize {
         256 * 1024 // 256KB
@@ -63,6 +72,10 @@ impl ConfigAccountBuffer {
 }
 
 impl Config {
+    fn default_account_buffer() -> Option<ConfigAccountBuffer> {
+        Some(ConfigAccountBuffer::default())
+    }
+
     fn load_from_str(config: &str) -> PluginResult<Self> {
         serde_json::from_str(config).map_err(|error| GeyserPluginError::ConfigFileReadError {
             msg: error.to_string(),

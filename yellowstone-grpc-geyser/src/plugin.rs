@@ -131,7 +131,7 @@ fn spawn_buffer_task(
                     };
 
                     match msg {
-                        Message::Account(account) if !account.is_startup => {
+                        Message::Account(account) => {
                             if account.account.data.len() >= size_threshold {
                                 // Large account: buffer/dedup
                                 buffer.upsert(account);
