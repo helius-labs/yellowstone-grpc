@@ -37,7 +37,7 @@ pub struct Config {
 pub struct ConfigAccountBuffer {
     /// Accounts with data length >= this threshold will be buffered (default: 1MB).
     /// Buffered accounts are deduplicated per (slot, pubkey), keeping only the highest
-    /// write_version, and flushed on Processed/BlockMeta events.
+    /// write_version, and flushed when BlockMeta arrives for that slot.
     #[serde(
         default = "ConfigAccountBuffer::default_size_threshold",
         deserialize_with = "deserialize_int_str"

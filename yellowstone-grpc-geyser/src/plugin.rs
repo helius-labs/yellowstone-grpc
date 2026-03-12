@@ -25,6 +25,7 @@ use {
     },
     yellowstone_grpc_proto::plugin::message::{
         Message, MessageAccount, MessageBlockMeta, MessageEntry, MessageSlot, MessageTransaction,
+        SlotStatus as MessageSlotStatus,
     },
 };
 
@@ -33,22 +34,21 @@ use ::metrics::set_global_recorder;
 #[cfg(feature = "statsd")]
 use metrics_exporter_statsd::StatsdBuilder;
 
-/// Buffers large accounts keyed by slot, then by pubkey. Deduplicates rapid writes
-/// within a slot by keeping only the highest write_version.
-#[derive(Debug)]
-struct AccountBufferSlots {
-    /// slot -> (pubkey -> account). Nested map gives O(1) slot lookup on flush/cleanup.
+/// Single-threaded account buffer owned by the buffer consumer task.
+/// No locking needed — only accessed from one async task.
+struct AccountBuffer {
+    /// slot -> (pubkey -> account). Nested map gives O(1) slot lookup.
     slots: HashMap<u64, HashMap<Pubkey, MessageAccount>>,
 }
 
-impl AccountBufferSlots {
+impl AccountBuffer {
     fn new() -> Self {
         Self {
             slots: HashMap::new(),
         }
     }
 
-    /// Insert or update an account in the buffer, keeping the highest write_version.
+    /// Insert or update, keeping the highest write_version.
     fn upsert(&mut self, account: MessageAccount) {
         let slot_map = self.slots.entry(account.slot).or_default();
         match slot_map.get(&account.account.pubkey) {
@@ -59,7 +59,7 @@ impl AccountBufferSlots {
         }
     }
 
-    /// If this (slot, pubkey) has a buffered entry, remove and return it.
+    /// Remove and return a buffered entry for (slot, pubkey), if present.
     fn remove_entry(&mut self, slot: u64, pubkey: &Pubkey) -> Option<MessageAccount> {
         let slot_map = self.slots.get_mut(&slot)?;
         let entry = slot_map.remove(pubkey);
@@ -69,7 +69,7 @@ impl AccountBufferSlots {
         entry
     }
 
-    /// Drain all entries for a specific slot. Returns them for sending.
+    /// Drain all entries for a specific slot.
     fn drain_slot(&mut self, slot: u64) -> Vec<MessageAccount> {
         self.slots
             .remove(&slot)
@@ -81,10 +81,80 @@ impl AccountBufferSlots {
     fn cleanup(&mut self, rooted_slot: u64) {
         self.slots.retain(|s, _| *s > rooted_slot);
     }
+}
 
-    fn is_empty(&self) -> bool {
-        self.slots.is_empty()
-    }
+/// Spawns the buffer consumer task. Receives all messages, deduplicates large
+/// accounts, and forwards to both raw clients and the grpc pipeline. Runs on
+/// a single thread with no locking — the channel serializes all access.
+fn spawn_buffer_task(
+    runtime: &Runtime,
+    mut rx: mpsc::UnboundedReceiver<Message>,
+    grpc_tx: mpsc::UnboundedSender<Message>,
+    raw_client_channels: Arc<RwLock<Vec<(u64, crossbeam_channel::Sender<Message>)>>>,
+    size_threshold: usize,
+    shutdown: Arc<Notify>,
+) {
+    runtime.spawn(async move {
+        let mut buffer = AccountBuffer::new();
+
+        let forward = |msg: Message| {
+            // Send to raw clients (deduplicated, same as grpc clients)
+            if let Ok(raw_clients) = raw_client_channels.read() {
+                for (id, tx) in raw_clients.iter() {
+                    if tx.send(msg.clone()).is_err() {
+                        log::warn!("Raw client {} channel disconnected", id);
+                    }
+                }
+            }
+
+            if grpc_tx.send(msg).is_ok() {
+                metrics::message_queue_size_inc();
+            }
+        };
+
+        loop {
+            tokio::select! {
+                biased;
+                msg = rx.recv() => {
+                    let msg = match msg {
+                        Some(m) => m,
+                        None => break,
+                    };
+
+                    match msg {
+                        Message::Account(account) if !account.is_startup => {
+                            if account.account.data.len() >= size_threshold {
+                                // Large account: buffer/dedup
+                                buffer.upsert(account);
+                            } else {
+                                // Small account: evict stale buffered entry if present
+                                buffer.remove_entry(account.slot, &account.account.pubkey);
+                                forward(Message::Account(account));
+                            }
+                        }
+                        Message::BlockMeta(ref meta) => {
+                            // Flush buffer for this slot before forwarding block_meta
+                            let slot = meta.slot();
+                            for account in buffer.drain_slot(slot) {
+                                forward(Message::Account(account));
+                            }
+                            forward(msg);
+                        }
+                        Message::Slot(ref slot_msg) if slot_msg.status == MessageSlotStatus::Finalized => {
+                            // Clean up stale buffer entries on Rooted/Finalized
+                            buffer.cleanup(slot_msg.slot);
+                            forward(msg);
+                        }
+                        _ => {
+                            // Everything else: forward immediately
+                            forward(msg);
+                        }
+                    }
+                }
+                _ = shutdown.notified() => break,
+            }
+        }
+    });
 }
 
 #[derive(Debug)]
@@ -96,97 +166,32 @@ pub struct PluginInner {
     grpc_shutdown: Arc<Notify>,
     prometheus: PrometheusService,
     raw_client_channels: Arc<RwLock<Vec<(u64, crossbeam_channel::Sender<Message>)>>>,
-    /// Size threshold for account buffering. Only meaningful when account_buffer is Some.
-    account_buffer_threshold: usize,
-    /// Buffer for large accounts. Protected by Mutex for thread safety.
-    account_buffer: Option<Mutex<AccountBufferSlots>>,
-    /// Fast flag: true when buffer has entries. Allows small accounts to skip
-    /// the Mutex entirely when the buffer is empty (the common case).
-    account_buffer_active: AtomicBool,
+    /// When account buffering is enabled, messages go through this channel
+    /// to a single-threaded consumer that deduplicates large accounts.
+    /// When None, messages go directly to grpc_channel.
+    buffer_tx: Option<mpsc::UnboundedSender<Message>>,
 }
 
 impl PluginInner {
     fn send_message(&self, message: Message) {
-        // Send to raw clients first (bypasses all processing)
-        if let Ok(raw_clients) = self.raw_client_channels.read() {
-            if !raw_clients.is_empty() {
-                for (id, tx) in raw_clients.iter() {
-                    if tx.send(message.clone()).is_err() {
-                        // Channel disconnected, will be cleaned up later
-                        log::warn!("Raw client {} channel disconnected", id);
+        match &self.buffer_tx {
+            Some(tx) => {
+                // Buffer task handles forwarding to both raw clients and grpc
+                let _ = tx.send(message);
+            }
+            None => {
+                // No buffering: send directly to raw clients and grpc
+                if let Ok(raw_clients) = self.raw_client_channels.read() {
+                    for (id, tx) in raw_clients.iter() {
+                        if tx.send(message.clone()).is_err() {
+                            log::warn!("Raw client {} channel disconnected", id);
+                        }
                     }
                 }
-            }
-        }
 
-        // Then send to regular geyser_loop pipeline
-        if self.grpc_channel.send(message).is_ok() {
-            metrics::message_queue_size_inc();
-        }
-    }
-
-    /// Try to buffer a large account, or evict a stale buffered entry if the account
-    /// shrank below threshold. Returns true if the account was buffered (caller should
-    /// NOT send it). Returns false if the caller should send it immediately.
-    fn try_buffer_account(&self, account: MessageAccount) -> bool {
-        let buf_mutex = match &self.account_buffer {
-            Some(buf) => buf,
-            None => return false,
-        };
-
-        if account.account.data.len() >= self.account_buffer_threshold {
-            // Large account: lock and insert
-            let mut buf = buf_mutex.lock().unwrap();
-            buf.upsert(account);
-            self.account_buffer_active.store(true, Ordering::Relaxed);
-            return true;
-        }
-
-        // Small account: only lock if buffer has entries (handles the case where
-        // a previously-buffered account shrank below threshold mid-slot).
-        if self.account_buffer_active.load(Ordering::Relaxed) {
-            let mut buf = buf_mutex.lock().unwrap();
-            if buf.remove_entry(account.slot, &account.account.pubkey).is_some() {
-                // Evicted stale large version; update the active flag
-                if buf.is_empty() {
-                    self.account_buffer_active.store(false, Ordering::Relaxed);
+                if self.grpc_channel.send(message).is_ok() {
+                    metrics::message_queue_size_inc();
                 }
-            }
-        }
-
-        // Caller sends the small account immediately
-        false
-    }
-
-    /// Flush all buffered accounts for a specific slot, sending them downstream.
-    /// Must be called on the geyser callback thread before sending BlockMeta or
-    /// Processed slot status to guarantee accounts arrive first.
-    fn flush_account_buffer_for_slot(&self, slot: u64) {
-        let buf_mutex = match &self.account_buffer {
-            Some(buf) => buf,
-            None => return,
-        };
-
-        let entries = {
-            let mut buf = buf_mutex.lock().unwrap();
-            let entries = buf.drain_slot(slot);
-            if buf.is_empty() {
-                self.account_buffer_active.store(false, Ordering::Relaxed);
-            }
-            entries
-        };
-        for account in entries {
-            self.send_message(Message::Account(account));
-        }
-    }
-
-    /// Remove buffered entries for slots <= rooted_slot to prevent memory leaks.
-    fn cleanup_account_buffer(&self, rooted_slot: u64) {
-        if let Some(buf) = &self.account_buffer {
-            let mut buf = buf.lock().unwrap();
-            buf.cleanup(rooted_slot);
-            if buf.is_empty() {
-                self.account_buffer_active.store(false, Ordering::Relaxed);
             }
         }
     }
@@ -286,16 +291,23 @@ impl GeyserPlugin for Plugin {
                 ))
             })?;
 
-        let (account_buffer_threshold, account_buffer) = match account_buffer_config {
-            Some(cfg) => {
-                log::info!(
-                    "Account buffer enabled: size_threshold={}",
-                    cfg.size_threshold
-                );
-                (cfg.size_threshold, Some(Mutex::new(AccountBufferSlots::new())))
-            }
-            None => (0, None),
-        };
+        // Spawn buffer task if account buffering is configured
+        let buffer_tx = account_buffer_config.map(|cfg| {
+            log::info!(
+                "Account buffer enabled: size_threshold={}",
+                cfg.size_threshold
+            );
+            let (tx, rx) = mpsc::unbounded_channel();
+            spawn_buffer_task(
+                &runtime,
+                rx,
+                grpc_channel.clone(),
+                raw_client_channels.clone(),
+                cfg.size_threshold,
+                grpc_shutdown.clone(),
+            );
+            tx
+        });
 
         self.inner = Some(PluginInner {
             runtime,
@@ -305,9 +317,7 @@ impl GeyserPlugin for Plugin {
             grpc_shutdown,
             prometheus,
             raw_client_channels,
-            account_buffer_threshold,
-            account_buffer,
-            account_buffer_active: AtomicBool::new(false),
+            buffer_tx,
         });
 
         Ok(())
@@ -316,6 +326,7 @@ impl GeyserPlugin for Plugin {
     fn on_unload(&mut self) {
         if let Some(inner) = self.inner.take() {
             inner.grpc_shutdown.notify_one();
+            drop(inner.buffer_tx);
             drop(inner.grpc_channel);
             inner.prometheus.shutdown();
             inner.runtime.shutdown_timeout(Duration::from_secs(30));
@@ -358,17 +369,10 @@ impl GeyserPlugin for Plugin {
                     }
                 }
             } else {
-                let message_account = MessageAccount::from_geyser(account, slot, is_startup);
-
-                // Record latency at receive time before any buffering decision
-                clickhouse_sink::event::record(
-                    Message::Account(message_account.clone())
-                        .get_latency_payload("ys_geyser_recv"),
-                );
-
-                if !inner.try_buffer_account(message_account.clone()) {
-                    inner.send_message(Message::Account(message_account));
-                }
+                let message =
+                    Message::Account(MessageAccount::from_geyser(account, slot, is_startup));
+                clickhouse_sink::event::record(message.get_latency_payload("ys_geyser_recv"));
+                inner.send_message(message);
             }
 
             Ok(())
@@ -393,12 +397,6 @@ impl GeyserPlugin for Plugin {
             clickhouse_sink::event::record(message.get_latency_payload("ys_geyser_recv"));
             inner.send_message(message);
             metrics::update_slot_status(status, slot);
-
-            // Clean up stale buffer entries on Rooted
-            if matches!(status, SlotStatus::Rooted) {
-                inner.cleanup_account_buffer(slot);
-            }
-
             Ok(())
         })
     }
@@ -462,9 +460,6 @@ impl GeyserPlugin for Plugin {
                 ReplicaBlockInfoVersions::V0_0_4(info) => info,
             };
 
-            // Flush buffered accounts for this slot before block_meta (critical for block reconstruction)
-            inner.flush_account_buffer_for_slot(blockinfo.slot);
-
             let message = Message::BlockMeta(Arc::new(MessageBlockMeta::from_geyser(blockinfo)));
             clickhouse_sink::event::record(message.get_latency_payload("ys_geyser_recv"));
             inner.send_message(message);
@@ -505,31 +500,56 @@ pub unsafe extern "C" fn _create_plugin() -> *mut dyn GeyserPlugin {
 mod tests {
     use super::*;
     use prost_types::Timestamp;
-    use yellowstone_grpc_proto::plugin::message::MessageAccountInfo;
+    use yellowstone_grpc_proto::{
+        geyser::SubscribeUpdateBlockMeta,
+        plugin::message::MessageAccountInfo,
+    };
 
+    /// Creates a test setup with a buffer consumer task.
+    /// Returns the PluginInner (which sends to the buffer task) and the
+    /// grpc_rx (which receives the final output after buffering).
     fn make_test_inner(
         threshold: Option<usize>,
     ) -> (PluginInner, mpsc::UnboundedReceiver<Message>) {
         let (grpc_tx, grpc_rx) = mpsc::unbounded_channel();
+        let runtime = Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+
+        let raw_client_channels = Arc::new(RwLock::new(Vec::new()));
+        let buffer_tx = threshold.map(|t| {
+            let (tx, rx) = mpsc::unbounded_channel();
+            spawn_buffer_task(
+                &runtime,
+                rx,
+                grpc_tx.clone(),
+                raw_client_channels.clone(),
+                t,
+                Arc::new(Notify::new()),
+            );
+            tx
+        });
+
         let inner = PluginInner {
-            runtime: Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .unwrap(),
+            runtime,
             snapshot_channel: Mutex::new(None),
             snapshot_channel_closed: AtomicBool::new(false),
             grpc_channel: grpc_tx,
             grpc_shutdown: Arc::new(Notify::new()),
             prometheus: PrometheusService::new_noop(),
             raw_client_channels: Arc::new(RwLock::new(Vec::new())),
-            account_buffer_threshold: threshold.unwrap_or(0),
-            account_buffer: threshold.map(|_| Mutex::new(AccountBufferSlots::new())),
-            account_buffer_active: AtomicBool::new(false),
+            buffer_tx,
         };
         (inner, grpc_rx)
     }
 
-    fn make_account(pubkey: Pubkey, slot: u64, data_len: usize, write_version: u64) -> MessageAccount {
+    fn make_account(
+        pubkey: Pubkey,
+        slot: u64,
+        data_len: usize,
+        write_version: u64,
+    ) -> MessageAccount {
         MessageAccount {
             account: Arc::new(MessageAccountInfo {
                 pubkey,
@@ -547,84 +567,97 @@ mod tests {
         }
     }
 
+    fn make_block_meta(slot: u64) -> Message {
+        Message::BlockMeta(Arc::new(MessageBlockMeta::from_update_oneof(
+            SubscribeUpdateBlockMeta {
+                slot,
+                ..Default::default()
+            },
+            Timestamp::default(),
+        )))
+    }
+
+    /// Let the tokio runtime process pending tasks (the buffer consumer).
+    fn flush_runtime(inner: &PluginInner) {
+        inner.runtime.block_on(async {
+            tokio::task::yield_now().await;
+        });
+    }
+
     #[test]
     fn test_small_account_passes_through() {
         let (inner, mut rx) = make_test_inner(Some(1000));
         let account = make_account(Pubkey::new_unique(), 1, 500, 1);
-        assert!(!inner.try_buffer_account(account));
-        let buf = inner.account_buffer.as_ref().unwrap().lock().unwrap();
-        assert!(buf.slots.is_empty());
-        assert!(rx.try_recv().is_err());
+        inner.send_message(Message::Account(account));
+        flush_runtime(&inner);
+
+        let msg = rx.try_recv().unwrap();
+        assert!(matches!(msg, Message::Account(_)));
     }
 
     #[test]
     fn test_large_account_is_buffered() {
-        let (inner, _rx) = make_test_inner(Some(1000));
-        let account = make_account(Pubkey::new_unique(), 1, 2000, 1);
-        assert!(inner.try_buffer_account(account));
-        let buf = inner.account_buffer.as_ref().unwrap().lock().unwrap();
-        assert_eq!(buf.slots.len(), 1);
-        assert_eq!(buf.slots[&1].len(), 1);
-    }
-
-    #[test]
-    fn test_dedup_keeps_highest_write_version() {
-        let (inner, _rx) = make_test_inner(Some(1000));
-        let pk = Pubkey::new_unique();
-
-        inner.try_buffer_account(make_account(pk, 1, 2000, 1));
-        inner.try_buffer_account(make_account(pk, 1, 2000, 3));
-        inner.try_buffer_account(make_account(pk, 1, 2000, 2)); // lower, should be ignored
-
-        let buf = inner.account_buffer.as_ref().unwrap().lock().unwrap();
-        assert_eq!(buf.slots[&1].len(), 1);
-        assert_eq!(buf.slots[&1][&pk].account.write_version, 3);
-    }
-
-    #[test]
-    fn test_flush_for_slot_sends_and_removes() {
         let (inner, mut rx) = make_test_inner(Some(1000));
-        let pk1 = Pubkey::new_unique();
-        let pk2 = Pubkey::new_unique();
+        let account = make_account(Pubkey::new_unique(), 1, 2000, 1);
+        inner.send_message(Message::Account(account));
+        flush_runtime(&inner);
 
-        inner.try_buffer_account(make_account(pk1, 1, 2000, 1));
-        inner.try_buffer_account(make_account(pk2, 2, 2000, 1));
-
-        inner.flush_account_buffer_for_slot(1);
-
-        // Only slot 2 should remain
-        let buf = inner.account_buffer.as_ref().unwrap().lock().unwrap();
-        assert_eq!(buf.slots.len(), 1);
-        assert!(buf.slots.contains_key(&2));
-        drop(buf);
-
-        // One message should have been sent
-        let msg = rx.try_recv().unwrap();
-        assert!(matches!(msg, Message::Account(_)));
+        // Large account should be buffered, not forwarded yet
         assert!(rx.try_recv().is_err());
     }
 
     #[test]
-    fn test_cleanup_removes_old_slots() {
-        let (inner, _rx) = make_test_inner(Some(1000));
+    fn test_dedup_keeps_highest_write_version() {
+        let (inner, mut rx) = make_test_inner(Some(1000));
+        let pk = Pubkey::new_unique();
 
-        inner.try_buffer_account(make_account(Pubkey::new_unique(), 5, 2000, 1));
-        inner.try_buffer_account(make_account(Pubkey::new_unique(), 10, 2000, 1));
-        inner.try_buffer_account(make_account(Pubkey::new_unique(), 15, 2000, 1));
+        inner.send_message(Message::Account(make_account(pk, 1, 2000, 1)));
+        inner.send_message(Message::Account(make_account(pk, 1, 2000, 3)));
+        inner.send_message(Message::Account(make_account(pk, 1, 2000, 2)));
 
-        inner.cleanup_account_buffer(10);
+        // Flush via BlockMeta
+        let block_meta = make_block_meta(1);
+        inner.send_message(block_meta);
+        flush_runtime(&inner);
 
-        let buf = inner.account_buffer.as_ref().unwrap().lock().unwrap();
-        assert_eq!(buf.slots.len(), 1);
-        assert!(buf.slots.contains_key(&15));
+        // Should get one account (highest write_version) then block_meta
+        let msg = rx.try_recv().unwrap();
+        if let Message::Account(account) = msg {
+            assert_eq!(account.account.write_version, 3);
+        } else {
+            panic!("expected Account message");
+        }
+        let msg = rx.try_recv().unwrap();
+        assert!(matches!(msg, Message::BlockMeta(_)));
+        assert!(rx.try_recv().is_err());
     }
 
     #[test]
-    fn test_no_buffering_when_disabled() {
-        let (inner, _rx) = make_test_inner(None);
-        let account = make_account(Pubkey::new_unique(), 1, 999999, 1);
-        assert!(!inner.try_buffer_account(account));
-        assert!(inner.account_buffer.is_none());
+    fn test_block_meta_flushes_slot() {
+        let (inner, mut rx) = make_test_inner(Some(1000));
+        let pk1 = Pubkey::new_unique();
+        let pk2 = Pubkey::new_unique();
+
+        // Buffer accounts for two different slots
+        inner.send_message(Message::Account(make_account(pk1, 1, 2000, 1)));
+        inner.send_message(Message::Account(make_account(pk2, 2, 2000, 1)));
+
+        // BlockMeta for slot 1 should only flush slot 1
+        let block_meta = make_block_meta(1);
+        inner.send_message(block_meta);
+        flush_runtime(&inner);
+
+        // Should get: Account(slot=1), BlockMeta(slot=1)
+        let msg = rx.try_recv().unwrap();
+        if let Message::Account(account) = msg {
+            assert_eq!(account.slot, 1);
+        } else {
+            panic!("expected Account message");
+        }
+        let msg = rx.try_recv().unwrap();
+        assert!(matches!(msg, Message::BlockMeta(_)));
+        // Slot 2 still buffered
+        assert!(rx.try_recv().is_err());
     }
 
     #[test]
@@ -633,31 +666,56 @@ mod tests {
         let pk = Pubkey::new_unique();
 
         // Large account gets buffered
-        assert!(inner.try_buffer_account(make_account(pk, 1, 2000, 1)));
-        assert!(inner.account_buffer_active.load(Ordering::Relaxed));
+        inner.send_message(Message::Account(make_account(pk, 1, 2000, 1)));
+        // Same account shrinks below threshold — should evict and forward
+        inner.send_message(Message::Account(make_account(pk, 1, 500, 2)));
+        flush_runtime(&inner);
 
-        // Same account shrinks below threshold — should evict the stale entry
-        assert!(!inner.try_buffer_account(make_account(pk, 1, 500, 2)));
+        // Small account should have been forwarded
+        let msg = rx.try_recv().unwrap();
+        if let Message::Account(account) = msg {
+            assert_eq!(account.account.data.len(), 500);
+            assert_eq!(account.account.write_version, 2);
+        } else {
+            panic!("expected Account message");
+        }
 
-        // Buffer should be empty now
-        let buf = inner.account_buffer.as_ref().unwrap().lock().unwrap();
-        assert!(buf.is_empty());
-        drop(buf);
-        assert!(!inner.account_buffer_active.load(Ordering::Relaxed));
+        // Flush via BlockMeta — nothing should come out (stale entry was evicted)
+        let block_meta = make_block_meta(1);
+        inner.send_message(block_meta);
+        flush_runtime(&inner);
 
-        // Nothing was sent via the channel (caller sends the small account)
+        let msg = rx.try_recv().unwrap();
+        assert!(matches!(msg, Message::BlockMeta(_)));
         assert!(rx.try_recv().is_err());
     }
 
     #[test]
-    fn test_small_account_skips_lock_when_buffer_empty() {
-        let (inner, _rx) = make_test_inner(Some(1000));
+    fn test_no_buffering_when_disabled() {
+        let (inner, mut rx) = make_test_inner(None);
+        let account = make_account(Pubkey::new_unique(), 1, 999999, 1);
+        inner.send_message(Message::Account(account));
 
-        // Buffer is empty, active flag is false
-        assert!(!inner.account_buffer_active.load(Ordering::Relaxed));
+        // Without buffering, goes straight to grpc_channel
+        let msg = rx.try_recv().unwrap();
+        assert!(matches!(msg, Message::Account(_)));
+    }
 
-        // Small account should return false without touching the Mutex
-        let account = make_account(Pubkey::new_unique(), 1, 500, 1);
-        assert!(!inner.try_buffer_account(account));
+    #[test]
+    fn test_non_account_messages_pass_through() {
+        let (inner, mut rx) = make_test_inner(Some(1000));
+
+        let slot_msg = Message::Slot(MessageSlot {
+            slot: 1,
+            parent: Some(0),
+            status: MessageSlotStatus::Processed,
+            dead_error: None,
+            created_at: Timestamp::default(),
+        });
+        inner.send_message(slot_msg);
+        flush_runtime(&inner);
+
+        let msg = rx.try_recv().unwrap();
+        assert!(matches!(msg, Message::Slot(_)));
     }
 }
