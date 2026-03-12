@@ -1,5 +1,6 @@
 use {
     crate::{
+        account_buffer::{forward_message, spawn_buffer_task},
         config::Config,
         grpc::GrpcService,
         metrics::{self, PrometheusService},
@@ -40,25 +41,18 @@ pub struct PluginInner {
     grpc_shutdown: Arc<Notify>,
     prometheus: PrometheusService,
     raw_client_channels: Arc<RwLock<Vec<(u64, crossbeam_channel::Sender<Message>)>>>,
+    /// When account buffering is enabled, messages go through this channel
+    /// to a single-threaded consumer that deduplicates large accounts.
+    /// When None, messages go directly to grpc_channel.
+    buffer_tx: Option<mpsc::UnboundedSender<Message>>,
 }
 
 impl PluginInner {
     fn send_message(&self, message: Message) {
-        // Send to raw clients first (bypasses all processing)
-        if let Ok(raw_clients) = self.raw_client_channels.read() {
-            if !raw_clients.is_empty() {
-                for (id, tx) in raw_clients.iter() {
-                    if let Err(_) = tx.send(message.clone()) {
-                        // Channel disconnected, will be cleaned up later
-                        log::warn!("Raw client {} channel disconnected", id);
-                    }
-                }
-            }
-        }
-
-        // Then send to regular geyser_loop pipeline
-        if self.grpc_channel.send(message).is_ok() {
-            metrics::message_queue_size_inc();
+        if let Some(tx) = &self.buffer_tx {
+            let _ = tx.send(message);
+        } else {
+            forward_message(message, &self.grpc_channel, &self.raw_client_channels);
         }
     }
 }
@@ -89,7 +83,9 @@ impl GeyserPlugin for Plugin {
         // Setup logger
         solana_logger::setup_with_default(&config.log.level);
 
-        // Create inner
+        // Extract account buffer config before moving config into async block
+        let account_buffer_config = config.account_buffer.clone();
+
         let mut builder = Builder::new_multi_thread();
         if let Some(worker_threads) = config.tokio.worker_threads {
             builder.worker_threads(worker_threads);
@@ -155,6 +151,27 @@ impl GeyserPlugin for Plugin {
                 ))
             })?;
 
+        // Spawn buffer task if account buffering is configured
+        let buffer_tx = account_buffer_config.map(|cfg| {
+            let flush_interval = Duration::from_millis(cfg.flush_interval_ms);
+            log::info!(
+                "Account buffer enabled: size_threshold={}, flush_interval={:?}",
+                cfg.size_threshold,
+                flush_interval,
+            );
+            let (tx, rx) = mpsc::unbounded_channel();
+            spawn_buffer_task(
+                &runtime,
+                rx,
+                grpc_channel.clone(),
+                raw_client_channels.clone(),
+                cfg.size_threshold,
+                flush_interval,
+                grpc_shutdown.clone(),
+            );
+            tx
+        });
+
         self.inner = Some(PluginInner {
             runtime,
             snapshot_channel: Mutex::new(snapshot_channel),
@@ -163,6 +180,7 @@ impl GeyserPlugin for Plugin {
             grpc_shutdown,
             prometheus,
             raw_client_channels,
+            buffer_tx,
         });
 
         Ok(())
@@ -171,6 +189,7 @@ impl GeyserPlugin for Plugin {
     fn on_unload(&mut self) {
         if let Some(inner) = self.inner.take() {
             inner.grpc_shutdown.notify_one();
+            drop(inner.buffer_tx);
             drop(inner.grpc_channel);
             inner.prometheus.shutdown();
             inner.runtime.shutdown_timeout(Duration::from_secs(30));
@@ -215,9 +234,7 @@ impl GeyserPlugin for Plugin {
             } else {
                 let message =
                     Message::Account(MessageAccount::from_geyser(account, slot, is_startup));
-
                 clickhouse_sink::event::record(message.get_latency_payload("ys_geyser_recv"));
-
                 inner.send_message(message);
             }
 

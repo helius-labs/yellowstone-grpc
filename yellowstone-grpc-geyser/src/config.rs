@@ -28,9 +28,54 @@ pub struct Config {
     pub debug_clients_http: bool,
     #[serde(default)]
     pub clickhouse: Option<clickhouse_sink::ClickhouseConfig>,
+    #[serde(default = "Config::default_account_buffer")]
+    pub account_buffer: Option<ConfigAccountBuffer>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ConfigAccountBuffer {
+    /// Accounts with data length >= this threshold will be buffered (default: 256KB).
+    /// Buffered accounts are deduplicated per (slot, pubkey), keeping only the highest
+    /// write_version, and flushed when BlockMeta arrives for that slot.
+    #[serde(
+        default = "ConfigAccountBuffer::default_size_threshold",
+        deserialize_with = "deserialize_int_str"
+    )]
+    pub size_threshold: usize,
+    /// Interval in milliseconds to periodically flush all buffered accounts (default: 100ms).
+    /// This ensures deduped accounts are forwarded even if BlockMeta is delayed.
+    #[serde(
+        default = "ConfigAccountBuffer::default_flush_interval_ms",
+        deserialize_with = "deserialize_int_str"
+    )]
+    pub flush_interval_ms: u64,
+}
+
+impl Default for ConfigAccountBuffer {
+    fn default() -> Self {
+        Self {
+            size_threshold: Self::default_size_threshold(),
+            flush_interval_ms: Self::default_flush_interval_ms(),
+        }
+    }
+}
+
+impl ConfigAccountBuffer {
+    const fn default_size_threshold() -> usize {
+        256 * 1024 // 256KB
+    }
+
+    const fn default_flush_interval_ms() -> u64 {
+        100
+    }
 }
 
 impl Config {
+    fn default_account_buffer() -> Option<ConfigAccountBuffer> {
+        Some(ConfigAccountBuffer::default())
+    }
+
     fn load_from_str(config: &str) -> PluginResult<Self> {
         serde_json::from_str(config).map_err(|error| GeyserPluginError::ConfigFileReadError {
             msg: error.to_string(),
