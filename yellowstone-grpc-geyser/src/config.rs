@@ -35,7 +35,7 @@ pub struct Config {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ConfigAccountBuffer {
-    /// Accounts with data length >= this threshold will be buffered (default: 256KB).
+    /// Accounts with data length >= this threshold will be buffered (default: 1MB).
     /// Buffered accounts are deduplicated per (slot, pubkey), keeping only the highest
     /// write_version, and flushed on Processed/BlockMeta events.
     #[serde(
@@ -47,7 +47,7 @@ pub struct ConfigAccountBuffer {
 
 impl ConfigAccountBuffer {
     const fn default_size_threshold() -> usize {
-        256 * 1024 // 256KB
+        1_048_576 // 1MB
     }
 }
 
