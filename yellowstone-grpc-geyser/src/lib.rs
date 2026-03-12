@@ -1,3 +1,4 @@
+pub mod account_buffer;
 pub mod config;
 pub mod grpc;
 pub mod metrics;
