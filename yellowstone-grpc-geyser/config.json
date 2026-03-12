@@ -88,6 +88,9 @@
   "prometheus": {
     "address": "0.0.0.0:8999"
   },
+  "account_buffer": {
+    "size_threshold": "262_144"
+  },
   "clickhouse": {
     "url": "127.0.0.1",
     "user": "default",

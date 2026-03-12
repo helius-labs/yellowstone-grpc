@@ -28,6 +28,27 @@ pub struct Config {
     pub debug_clients_http: bool,
     #[serde(default)]
     pub clickhouse: Option<clickhouse_sink::ClickhouseConfig>,
+    #[serde(default)]
+    pub account_buffer: Option<ConfigAccountBuffer>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ConfigAccountBuffer {
+    /// Accounts with data length >= this threshold will be buffered (default: 1MB).
+    /// Buffered accounts are deduplicated per (slot, pubkey), keeping only the highest
+    /// write_version, and flushed when BlockMeta arrives for that slot.
+    #[serde(
+        default = "ConfigAccountBuffer::default_size_threshold",
+        deserialize_with = "deserialize_int_str"
+    )]
+    pub size_threshold: usize,
+}
+
+impl ConfigAccountBuffer {
+    const fn default_size_threshold() -> usize {
+        256 * 1024 // 256KB
+    }
 }
 
 impl Config {

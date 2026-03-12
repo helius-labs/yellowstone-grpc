@@ -281,6 +281,14 @@ impl PrometheusService {
         drop(self.debug_clients_statuses);
         self.shutdown.notify_one();
     }
+
+    #[cfg(test)]
+    pub fn new_noop() -> Self {
+        Self {
+            debug_clients_statuses: None,
+            shutdown: Arc::new(Notify::new()),
+        }
+    }
 }
 
 fn metrics_handler() -> http::Result<Response<BoxBody<Bytes, Infallible>>> {
