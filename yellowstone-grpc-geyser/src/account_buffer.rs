@@ -10,7 +10,9 @@ use {
         runtime::Runtime,
         sync::{mpsc, Notify},
     },
-    yellowstone_grpc_proto::plugin::message::{Message, MessageAccount, MessageBlockMeta},
+    yellowstone_grpc_proto::plugin::message::{
+        Message, MessageAccount, SlotStatus as MessageSlotStatus,
+    },
 };
 
 /// Forwards a message to raw clients and the grpc pipeline.
@@ -126,6 +128,15 @@ pub fn spawn_buffer_task(
                                 forward(Message::Account(account));
                             }
                         }
+                        Message::Slot(ref slot_msg)
+                            if slot_msg.status == MessageSlotStatus::Processed =>
+                        {
+                            // Flush buffer for this slot before forwarding slot processed
+                            for account in buffer.drain_slot(slot_msg.slot) {
+                                forward(Message::Account(account));
+                            }
+                            forward(msg);
+                        }
                         Message::BlockMeta(ref meta) => {
                             // Flush buffer for this slot before forwarding block_meta
                             let slot = meta.slot();
@@ -157,7 +168,9 @@ mod tests {
     use tokio::runtime::Builder;
     use yellowstone_grpc_proto::{
         geyser::SubscribeUpdateBlockMeta,
-        plugin::message::{MessageAccountInfo, MessageSlot, SlotStatus as MessageSlotStatus},
+        plugin::message::{
+            MessageAccountInfo, MessageBlockMeta, MessageSlot, SlotStatus as MessageSlotStatus,
+        },
     };
 
     struct TestHarness {
@@ -334,5 +347,90 @@ mod tests {
         h.flush();
 
         assert!(matches!(h.try_recv(), Some(Message::Slot(_))));
+    }
+
+    #[test]
+    fn test_slot_processed_flushes_buffer() {
+        let mut h = make_test_harness(1000);
+        let pk1 = Pubkey::new_unique();
+        let pk2 = Pubkey::new_unique();
+
+        // Buffer large accounts in two different slots
+        h.send(Message::Account(make_account(pk1, 1, 2000, 1)));
+        h.send(Message::Account(make_account(pk2, 2, 2000, 1)));
+
+        // Slot processed for slot 1 should flush only slot 1
+        h.send(Message::Slot(MessageSlot {
+            slot: 1,
+            parent: Some(0),
+            status: MessageSlotStatus::Processed,
+            dead_error: None,
+            created_at: Timestamp::default(),
+        }));
+        h.flush();
+
+        if let Some(Message::Account(account)) = h.try_recv() {
+            assert_eq!(account.slot, 1);
+        } else {
+            panic!("expected Account message for slot 1");
+        }
+        assert!(matches!(h.try_recv(), Some(Message::Slot(_))));
+        // Slot 2 should still be buffered
+        assert!(h.try_recv().is_none());
+    }
+
+    #[test]
+    fn test_slot_confirmed_does_not_flush_buffer() {
+        let mut h = make_test_harness(1000);
+        let pk = Pubkey::new_unique();
+
+        h.send(Message::Account(make_account(pk, 1, 2000, 1)));
+
+        // Confirmed status should NOT flush the buffer
+        h.send(Message::Slot(MessageSlot {
+            slot: 1,
+            parent: Some(0),
+            status: MessageSlotStatus::Confirmed,
+            dead_error: None,
+            created_at: Timestamp::default(),
+        }));
+        h.flush();
+
+        // Only the slot message should pass through, not the buffered account
+        if let Some(Message::Slot(slot_msg)) = h.try_recv() {
+            assert_eq!(slot_msg.status, MessageSlotStatus::Confirmed);
+        } else {
+            panic!("expected Slot message");
+        }
+        assert!(h.try_recv().is_none());
+    }
+
+    #[test]
+    fn test_slot_processed_dedup_then_flush() {
+        let mut h = make_test_harness(1000);
+        let pk = Pubkey::new_unique();
+
+        // Send multiple updates for the same account, buffer should keep highest write_version
+        h.send(Message::Account(make_account(pk, 1, 2000, 1)));
+        h.send(Message::Account(make_account(pk, 1, 2000, 5)));
+        h.send(Message::Account(make_account(pk, 1, 2000, 3)));
+
+        // Flush via slot processed
+        h.send(Message::Slot(MessageSlot {
+            slot: 1,
+            parent: Some(0),
+            status: MessageSlotStatus::Processed,
+            dead_error: None,
+            created_at: Timestamp::default(),
+        }));
+        h.flush();
+
+        if let Some(Message::Account(account)) = h.try_recv() {
+            assert_eq!(account.account.write_version, 5);
+        } else {
+            panic!("expected Account message");
+        }
+        assert!(matches!(h.try_recv(), Some(Message::Slot(_))));
+        assert!(h.try_recv().is_none());
     }
 }
