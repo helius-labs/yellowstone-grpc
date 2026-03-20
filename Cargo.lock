@@ -6645,6 +6645,7 @@ dependencies = [
  "cargo-lock",
  "clap",
  "clickhouse-sink",
+ "criterion",
  "crossbeam-channel",
  "futures",
  "git-version",

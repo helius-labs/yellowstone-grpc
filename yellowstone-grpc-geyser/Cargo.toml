@@ -61,6 +61,14 @@ cargo-lock = { workspace = true }
 git-version = { workspace = true }
 vergen = { workspace = true, features = ["build", "rustc"] }
 
+[dev-dependencies]
+criterion = { workspace = true }
+prost-types = { workspace = true }
+
+[[bench]]
+name = "write_version_normalization"
+harness = false
+
 [lints]
 workspace = true
 

@@ -34,6 +34,49 @@ pub fn forward_message(
     }
 }
 
+/// Tracks unique write_versions per (slot, pubkey) so we can normalize them.
+///
+/// Write versions are not consistent across YS - each Agave node sets it to 0 on startup
+/// and increments for each update. Given that account updates are processed in the same order
+/// across nodes, we normalize by tracking the count of unique write_versions seen for each
+/// (slot, pubkey) and using that count as a deterministic replacement.
+pub struct WriteVersionTracker {
+    /// slot -> (pubkey -> count of updates seen)
+    slot_versions: HashMap<u64, HashMap<Pubkey, u64>>,
+}
+
+impl WriteVersionTracker {
+    pub fn new() -> Self {
+        Self {
+            slot_versions: HashMap::new(),
+        }
+    }
+
+    /// Normalize the write_version for an account message.
+    /// Returns the same MessageAccount with write_version = slot * 10_000_000 + update_count.
+    /// Write versions from Agave are always unique per (slot, pubkey) since they increment
+    /// monotonically, so a simple counter is sufficient.
+    pub fn normalize(&mut self, mut account: MessageAccount) -> MessageAccount {
+        let count = self
+            .slot_versions
+            .entry(account.slot)
+            .or_default()
+            .entry(account.account.pubkey)
+            .or_default();
+
+        *count += 1;
+
+        let normalized = account.slot * 10_000_000 + *count;
+        Arc::make_mut(&mut account.account).write_version = normalized;
+        account
+    }
+
+    /// Remove tracking data for all slots earlier than the finalized slot.
+    fn on_finalized(&mut self, slot: u64) {
+        self.slot_versions.retain(|&s, _| s >= slot);
+    }
+}
+
 /// Single-threaded account buffer owned by the buffer consumer task.
 /// No locking needed — only accessed from one async task.
 struct AccountBuffer {
@@ -42,7 +85,7 @@ struct AccountBuffer {
 }
 
 impl AccountBuffer {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             slots: HashMap::new(),
         }
@@ -101,6 +144,7 @@ pub fn spawn_buffer_task(
 ) {
     runtime.spawn(async move {
         let mut buffer = AccountBuffer::new();
+        let mut tracker = WriteVersionTracker::new();
         let mut flush_timer = tokio::time::interval(flush_interval);
         // The first tick completes immediately; skip it so we don't flush an empty buffer.
         flush_timer.tick().await;
@@ -120,6 +164,7 @@ pub fn spawn_buffer_task(
 
                     match msg {
                         Message::Account(account) => {
+                            let account = tracker.normalize(account);
                             if account.account.data.len() >= size_threshold {
                                 buffer.upsert(account);
                             } else {
@@ -127,6 +172,12 @@ pub fn spawn_buffer_task(
                                 buffer.remove_entry(account.slot, &account.account.pubkey);
                                 forward(Message::Account(account));
                             }
+                        }
+                        Message::Slot(ref slot_msg)
+                            if slot_msg.status == MessageSlotStatus::Finalized =>
+                        {
+                            tracker.on_finalized(slot_msg.slot);
+                            forward(msg);
                         }
                         Message::Slot(ref slot_msg)
                             if slot_msg.status == MessageSlotStatus::Processed =>
@@ -275,6 +326,8 @@ mod tests {
         let mut h = make_test_harness(1000);
         let pk = Pubkey::new_unique();
 
+        // 3 unique write_versions for slot 1 → normalized to 1*10_000_000 + 1, +2, +3
+        // Buffer keeps highest normalized version (10_000_003)
         h.send(Message::Account(make_account(pk, 1, 2000, 1)));
         h.send(Message::Account(make_account(pk, 1, 2000, 3)));
         h.send(Message::Account(make_account(pk, 1, 2000, 2)));
@@ -282,7 +335,7 @@ mod tests {
         h.flush();
 
         if let Some(Message::Account(account)) = h.try_recv() {
-            assert_eq!(account.account.write_version, 3);
+            assert_eq!(account.account.write_version, 10_000_003);
         } else {
             panic!("expected Account message");
         }
@@ -321,7 +374,8 @@ mod tests {
 
         if let Some(Message::Account(account)) = h.try_recv() {
             assert_eq!(account.account.data.len(), 500);
-            assert_eq!(account.account.write_version, 2);
+            // 2 unique write_versions seen → normalized to 1*10_000_000 + 2
+            assert_eq!(account.account.write_version, 10_000_002);
         } else {
             panic!("expected Account message");
         }
@@ -411,6 +465,7 @@ mod tests {
         let pk = Pubkey::new_unique();
 
         // Send multiple updates for the same account, buffer should keep highest write_version
+        // 3 unique write_versions → normalized to 10_000_001, 10_000_002, 10_000_003
         h.send(Message::Account(make_account(pk, 1, 2000, 1)));
         h.send(Message::Account(make_account(pk, 1, 2000, 5)));
         h.send(Message::Account(make_account(pk, 1, 2000, 3)));
@@ -426,11 +481,70 @@ mod tests {
         h.flush();
 
         if let Some(Message::Account(account)) = h.try_recv() {
-            assert_eq!(account.account.write_version, 5);
+            // Buffer keeps highest normalized write_version
+            assert_eq!(account.account.write_version, 10_000_003);
         } else {
             panic!("expected Account message");
         }
         assert!(matches!(h.try_recv(), Some(Message::Slot(_))));
         assert!(h.try_recv().is_none());
+    }
+
+    #[test]
+    fn test_write_version_normalization() {
+        let mut h = make_test_harness(1000);
+        let pk1 = Pubkey::new_unique();
+        let pk2 = Pubkey::new_unique();
+
+        // pk1 gets 2 updates in slot 5, pk2 gets 1 update
+        h.send(Message::Account(make_account(pk1, 5, 100, 100)));
+        h.send(Message::Account(make_account(pk1, 5, 100, 200)));
+        h.send(Message::Account(make_account(pk2, 5, 100, 300)));
+        h.flush();
+
+        // pk1 first update: 5*10_000_000 + 1 = 50_000_001
+        let msg1 = h.try_recv().unwrap();
+        if let Message::Account(a) = msg1 {
+            assert_eq!(a.account.pubkey, pk1);
+            assert_eq!(a.account.write_version, 50_000_001);
+        } else {
+            panic!("expected Account");
+        }
+
+        // pk1 second update: 5*10_000_000 + 2 = 50_000_002
+        let msg2 = h.try_recv().unwrap();
+        if let Message::Account(a) = msg2 {
+            assert_eq!(a.account.pubkey, pk1);
+            assert_eq!(a.account.write_version, 50_000_002);
+        } else {
+            panic!("expected Account");
+        }
+
+        // pk2 first update: 5*10_000_000 + 1 = 50_000_001
+        let msg3 = h.try_recv().unwrap();
+        if let Message::Account(a) = msg3 {
+            assert_eq!(a.account.pubkey, pk2);
+            assert_eq!(a.account.write_version, 50_000_001);
+        } else {
+            panic!("expected Account");
+        }
+    }
+
+    #[test]
+    fn test_finalized_slot_cleans_tracker() {
+        let mut tracker = WriteVersionTracker::new();
+        let pk = Pubkey::new_unique();
+
+        // Simulate normalizing accounts in slots 1, 2, 3
+        for slot in 1..=3 {
+            let account = make_account(pk, slot, 100, 1);
+            tracker.normalize(account);
+        }
+        assert_eq!(tracker.slot_versions.len(), 3);
+
+        // Finalize at slot 3 → slots 1, 2 pruned
+        tracker.on_finalized(3);
+        assert_eq!(tracker.slot_versions.len(), 1);
+        assert!(tracker.slot_versions.contains_key(&3));
     }
 }
