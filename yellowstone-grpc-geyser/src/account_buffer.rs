@@ -2,7 +2,7 @@ use {
     crate::metrics,
     solana_sdk::pubkey::Pubkey,
     std::{
-        collections::{HashMap, HashSet},
+        collections::HashMap,
         sync::{Arc, RwLock},
         time::Duration,
     },
@@ -41,8 +41,8 @@ pub fn forward_message(
 /// across nodes, we normalize by tracking the count of unique write_versions seen for each
 /// (slot, pubkey) and using that count as a deterministic replacement.
 pub struct WriteVersionTracker {
-    /// slot -> (pubkey -> set of write_versions seen)
-    slot_versions: HashMap<u64, HashMap<Pubkey, HashSet<u64>>>,
+    /// slot -> (pubkey -> count of updates seen)
+    slot_versions: HashMap<u64, HashMap<Pubkey, u64>>,
 }
 
 impl WriteVersionTracker {
@@ -53,28 +53,22 @@ impl WriteVersionTracker {
     }
 
     /// Normalize the write_version for an account message.
-    /// Returns a new MessageAccount with write_version = slot * 10_000_000 + count_of_unique_versions.
-    pub fn normalize(&mut self, account: MessageAccount) -> MessageAccount {
-        let pubkey_versions = self
+    /// Returns the same MessageAccount with write_version = slot * 10_000_000 + update_count.
+    /// Write versions from Agave are always unique per (slot, pubkey) since they increment
+    /// monotonically, so a simple counter is sufficient.
+    pub fn normalize(&mut self, mut account: MessageAccount) -> MessageAccount {
+        let count = self
             .slot_versions
             .entry(account.slot)
             .or_default()
             .entry(account.account.pubkey)
             .or_default();
 
-        pubkey_versions.insert(account.account.write_version);
+        *count += 1;
 
-        let normalized = account.slot * 10_000_000 + pubkey_versions.len() as u64;
-
-        let mut info = (*account.account).clone();
-        info.write_version = normalized;
-
-        MessageAccount {
-            account: Arc::new(info),
-            slot: account.slot,
-            is_startup: account.is_startup,
-            created_at: account.created_at,
-        }
+        let normalized = account.slot * 10_000_000 + *count;
+        Arc::make_mut(&mut account.account).write_version = normalized;
+        account
     }
 
     /// Remove tracking data for all slots earlier than the finalized slot.

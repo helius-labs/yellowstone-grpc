@@ -27,15 +27,13 @@ fn make_account(pubkey: Pubkey, slot: u64, write_version: u64) -> MessageAccount
 
 fn bench_normalize_single(c: &mut Criterion) {
     c.bench_function("normalize_single_account", |b| {
-        b.iter_batched(
-            || {
-                let tracker = WriteVersionTracker::new();
-                let account = make_account(Pubkey::new_unique(), 1, 42);
-                (tracker, account)
-            },
-            |(mut tracker, account)| tracker.normalize(account),
-            criterion::BatchSize::SmallInput,
-        );
+        let mut tracker = WriteVersionTracker::new();
+        let mut i = 0u64;
+        b.iter(|| {
+            i += 1;
+            let account = make_account(Pubkey::new_unique(), 1, i);
+            tracker.normalize(account)
+        });
     });
 }
 
@@ -47,20 +45,18 @@ fn bench_normalize_with_populated_slot(c: &mut Criterion) {
             BenchmarkId::new("accounts_in_slot", num_accounts),
             &num_accounts,
             |b, &n| {
-                b.iter_batched(
-                    || {
-                        let mut tracker = WriteVersionTracker::new();
-                        // Pre-populate with n unique pubkeys in slot 1
-                        for i in 0..n {
-                            let account = make_account(Pubkey::new_unique(), 1, i as u64);
-                            tracker.normalize(account);
-                        }
-                        let new_account = make_account(Pubkey::new_unique(), 1, 999);
-                        (tracker, new_account)
-                    },
-                    |(mut tracker, account)| tracker.normalize(account),
-                    criterion::BatchSize::SmallInput,
-                );
+                let mut tracker = WriteVersionTracker::new();
+                // Pre-populate with n unique pubkeys in slot 1
+                for i in 0..n {
+                    let account = make_account(Pubkey::new_unique(), 1, i as u64);
+                    tracker.normalize(account);
+                }
+                let mut i = 0u64;
+                b.iter(|| {
+                    i += 1;
+                    let account = make_account(Pubkey::new_unique(), 1, i);
+                    tracker.normalize(account)
+                });
             },
         );
     }
@@ -76,21 +72,19 @@ fn bench_normalize_repeated_pubkey(c: &mut Criterion) {
             BenchmarkId::new("prior_updates", num_updates),
             &num_updates,
             |b, &n| {
-                b.iter_batched(
-                    || {
-                        let mut tracker = WriteVersionTracker::new();
-                        let pk = Pubkey::new_unique();
-                        // Pre-populate with n updates for the same pubkey
-                        for i in 0..n {
-                            let account = make_account(pk, 1, i as u64);
-                            tracker.normalize(account);
-                        }
-                        let new_account = make_account(pk, 1, n as u64);
-                        (tracker, new_account)
-                    },
-                    |(mut tracker, account)| tracker.normalize(account),
-                    criterion::BatchSize::SmallInput,
-                );
+                let mut tracker = WriteVersionTracker::new();
+                let pk = Pubkey::new_unique();
+                // Pre-populate with n updates for the same pubkey
+                for i in 0..n {
+                    let account = make_account(pk, 1, i as u64);
+                    tracker.normalize(account);
+                }
+                let mut i = n as u64;
+                b.iter(|| {
+                    i += 1;
+                    let account = make_account(pk, 1, i);
+                    tracker.normalize(account)
+                });
             },
         );
     }
