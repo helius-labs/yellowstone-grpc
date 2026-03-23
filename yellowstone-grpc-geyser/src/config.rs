@@ -35,7 +35,7 @@ pub struct Config {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ConfigAccountBuffer {
-    /// Accounts with data length >= this threshold will be buffered (default: 256KB).
+    /// Accounts with data length >= this threshold will be buffered (default: 512KB).
     /// Buffered accounts are deduplicated per (slot, pubkey), keeping only the highest
     /// write_version, and flushed when BlockMeta arrives for that slot.
     #[serde(
@@ -63,7 +63,7 @@ impl Default for ConfigAccountBuffer {
 
 impl ConfigAccountBuffer {
     const fn default_size_threshold() -> usize {
-        256 * 1024 // 256KB
+        512 * 1024 // 512KB
     }
 
     const fn default_flush_interval_ms() -> u64 {
