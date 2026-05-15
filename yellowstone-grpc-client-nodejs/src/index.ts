@@ -15,6 +15,7 @@ import {
   GetLatestBlockhashResponse,
   GeyserClient,
   IsBlockhashValidResponse,
+  SubscribePreprocessedRequestFilterTransactions,
   SubscribeRequestAccountsDataSlice,
   SubscribeRequestFilterAccounts,
   SubscribeRequestFilterBlocks,
@@ -29,6 +30,14 @@ import {
 // Reexport automatically generated types
 export {
   CommitmentLevel,
+  SubscribePreprocessedBytesTransaction,
+  SubscribePreprocessedBytesTransactionInfo,
+  SubscribePreprocessedBytesUpdate,
+  SubscribePreprocessedRequest,
+  SubscribePreprocessedRequestFilterTransactions,
+  SubscribePreprocessedTransaction,
+  SubscribePreprocessedTransactionInfo,
+  SubscribePreprocessedUpdate,
   SubscribeRequest,
   SubscribeRequestAccountsDataSlice,
   SubscribeRequestFilterAccounts,
@@ -150,6 +159,56 @@ export default class Client {
 
   async subscribe() {
     return await this._client.subscribe(this._getInsecureMetadata());
+  }
+
+  async subscribePreprocessed() {
+    return await this._client.subscribePreprocessed(this._getInsecureMetadata());
+  }
+
+  async subscribePreprocessedOnce(transactions: {
+    [key: string]: SubscribePreprocessedRequestFilterTransactions;
+  }) {
+    const stream = await this._client.subscribePreprocessed(
+      this._getInsecureMetadata()
+    );
+
+    await new Promise<void>((resolve, reject) => {
+      stream.write({ transactions }, (err: any) => {
+        if (err === null || err === undefined) {
+          resolve();
+        } else {
+          reject(err);
+        }
+      });
+    });
+
+    return stream;
+  }
+
+  async subscribePreprocessedBytes() {
+    return await this._client.subscribePreprocessedBytes(
+      this._getInsecureMetadata()
+    );
+  }
+
+  async subscribePreprocessedBytesOnce(transactions: {
+    [key: string]: SubscribePreprocessedRequestFilterTransactions;
+  }) {
+    const stream = await this._client.subscribePreprocessedBytes(
+      this._getInsecureMetadata()
+    );
+
+    await new Promise<void>((resolve, reject) => {
+      stream.write({ transactions }, (err: any) => {
+        if (err === null || err === undefined) {
+          resolve();
+        } else {
+          reject(err);
+        }
+      });
+    });
+
+    return stream;
   }
 
   async subscribeOnce(

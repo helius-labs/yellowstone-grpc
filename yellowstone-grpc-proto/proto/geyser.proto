@@ -10,6 +10,7 @@ package geyser;
 service Geyser {
   rpc Subscribe(stream SubscribeRequest) returns (stream SubscribeUpdate) {}
   rpc SubscribePreprocessed(stream SubscribePreprocessedRequest) returns (stream SubscribePreprocessedUpdate) {}
+  rpc SubscribePreprocessedBytes(stream SubscribePreprocessedRequest) returns (stream SubscribePreprocessedBytesUpdate) {}
   rpc SubscribeReplayInfo(SubscribeReplayInfoRequest) returns (SubscribeReplayInfoResponse) {}
   rpc Ping(PingRequest) returns (PongResponse) {}
   rpc GetLatestBlockhash(GetLatestBlockhashRequest) returns (GetLatestBlockhashResponse) {}
@@ -54,6 +55,27 @@ message SubscribePreprocessedTransactionInfo {
   bytes signature = 1;
   bool is_vote = 2;
   solana.storage.ConfirmedBlock.Transaction transaction = 3;
+}
+
+message SubscribePreprocessedBytesUpdate {
+  repeated string filters = 1;
+  oneof update_oneof {
+    SubscribePreprocessedBytesTransaction transaction = 2;
+    SubscribeUpdatePing ping = 3;
+    SubscribeUpdatePong pong = 4;
+  }
+  google.protobuf.Timestamp created_at = 5;
+}
+
+message SubscribePreprocessedBytesTransaction {
+  SubscribePreprocessedBytesTransactionInfo transaction = 1;
+  uint64 slot = 2;
+}
+
+message SubscribePreprocessedBytesTransactionInfo {
+  bytes signature = 1;
+  bool is_vote = 2;
+  bytes transaction = 3;
 }
 
 enum CommitmentLevel {
