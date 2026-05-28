@@ -29,6 +29,8 @@ pub mod solana {
     }
 }
 
+pub mod cuckoo;
+
 pub mod prelude {
     pub use super::{geyser::*, solana::storage::confirmed_block::*};
 }

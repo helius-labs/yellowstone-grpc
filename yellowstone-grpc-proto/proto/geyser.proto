@@ -91,6 +91,26 @@ message SubscribeRequestFilterAccounts {
   repeated string owner = 3;
   repeated SubscribeRequestFilterAccountsFilter filters = 4;
   optional bool nonempty_txn_signature = 5;
+  optional CuckooFilter cuckoo_accounts_filter = 6;
+}
+
+// Hash algorithm used to build a CuckooFilter. Carried on the wire so the
+// algorithm can change in the future without breaking older clients.
+enum CuckooHashAlgorithm {
+  SIP_HASH = 0;
+}
+
+// Compact probabilistic account filter. Lets a client subscribe to very large
+// account sets (millions) by sending fingerprints (~3 bytes/account) instead of
+// explicit 32-byte pubkeys. Matching has no false negatives and <1% false
+// positives, which the client re-filters locally against its exact set.
+message CuckooFilter {
+  bytes data = 1;
+  uint32 bucket_count = 2;
+  uint32 entries_per_bucket = 3;
+  uint32 fingerprint_bits = 4;
+  uint64 hash_seed = 5;
+  CuckooHashAlgorithm hash_algorithm = 6;
 }
 
 message SubscribeRequestFilterAccountsFilter {
