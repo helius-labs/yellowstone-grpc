@@ -1,17 +1,9 @@
 //! Safe, tracked wrapper around [`CuckooFilter`] for client-side filter construction.
 //!
-//! [`CompressedAccountFilterSet`] is the primary user-facing type for building cuckoo filters to
-//! send in subscribe requests. It maintains an exact-membership [`HashSet`]
-//! alongside the probabilistic filter, which:
-//!
-//! - **Makes `remove` safe**: the filter is only mutated for items actually
-//!   present, avoiding the footgun where removing an un-inserted item clears
-//!   a different item sharing its fingerprint.
-//! - **Makes `contains` exact**: client-side membership checks return the
-//!   true answer, not a probabilistic one.
-//!
-//! The probabilistic filter is only used on the wire. Server-side matching
-//! accepts false positives (clients filter locally on receipt).
+//! [`CompressedAccountFilterSet`] keeps an exact [`HashSet`] alongside the probabilistic
+//! filter, so `remove` is safe (never evicts a fingerprint-colliding item) and `contains`
+//! is exact. The cuckoo filter is used only on the wire; the server accepts false positives
+//! and clients filter locally on receipt.
 //!
 //! [`HashSet`]: std::collections::HashSet
 
@@ -27,40 +19,13 @@ use {
     std::collections::HashSet,
 };
 
-/// A HashMap-like wrapper around [`CuckooFilter`] for safe filter construction.
+/// Safe builder for cuckoo filters sent in subscribe requests.
 ///
-/// Maintains two parallel collections:
-/// - A [`HashSet`] as the source of truth for exact membership
-/// - A [`CuckooFilter`] as the compact wire representation
+/// Holds two parallel collections: a [`HashSet`] (exact source of truth for `contains`/`len`
+/// and the guard for writes) and a [`CuckooFilter`] (compact wire form). Writes go to both;
+/// serialization reads the filter. Strictly safer than a raw [`CuckooFilter`], whose `remove`
+/// can silently evict the wrong fingerprint-colliding item.
 ///
-/// Writes go to both; reads (`contains`, `len`) answer from the [`HashSet`];
-/// serialization reads from the [`CuckooFilter`]. This gives users exact local
-/// semantics while producing a compact probabilistic filter for the server.
-///
-/// # When to Use
-///
-/// Use [`CompressedAccountFilterSet`] whenever you need to build a cuckoo filter to send in a
-/// subscribe request. It is strictly safer than constructing a [`CuckooFilter`]
-/// directly — the filter's `remove` method has a footgun (it can silently remove
-/// the wrong item when fingerprints collide), and [`CompressedAccountFilterSet`] guards against it.
-///
-/// # Example
-///
-/// ```
-/// use {
-///     solana_pubkey::Pubkey,
-///     yellowstone_grpc_proto::cuckoo::CompressedAccountFilterSet,
-/// };
-///
-/// let mut map = CompressedAccountFilterSet::with_capacity(1000).unwrap();
-/// map.insert(Pubkey::new_from_array([42u8; 32])).unwrap();
-/// map.insert(Pubkey::new_from_array([100u8; 32])).unwrap();
-/// assert!(map.contains(Pubkey::new_from_array([42u8; 32])));
-/// assert_eq!(map.len(), 2);
-///
-/// map.remove(Pubkey::new_from_array([42u8; 32]));
-/// assert!(!map.contains(Pubkey::new_from_array([42u8; 32])));
-/// ```
 /// [`HashSet`]: std::collections::HashSet
 pub struct CompressedAccountFilterSet {
     items: HashSet<[u8; 32]>,
@@ -69,27 +34,8 @@ pub struct CompressedAccountFilterSet {
 }
 
 impl CompressedAccountFilterSet {
-    /// Creates an empty map pre-sized for up to `max_capacity` items.
-    ///
-    /// Both the internal [`HashSet`] and [`CuckooFilter`] are allocated up front
-    /// to avoid rehashing or reallocation during inserts.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`CuckooBuildError::CapacityOverflow`] if `max_capacity` exceeds
-    /// what the system can allocate, or if the underlying cuckoo filter cannot
-    /// be built at the requested size.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use yellowstone_grpc_proto::cuckoo::CompressedAccountFilterSet;
-    ///
-    /// let map = CompressedAccountFilterSet::with_capacity(10_000).unwrap();
-    /// assert!(map.is_empty());
-    /// ```
-    ///
-    /// [`HashSet`]: std::collections::HashSet
+    /// Empty map pre-sized for `max_capacity` items (both the `HashSet` and filter are
+    /// allocated up front). Errors [`CuckooBuildError::CapacityOverflow`] if it can't be allocated.
     pub fn with_capacity(max_capacity: usize) -> Result<Self, CuckooBuildError> {
         let filter = CuckooFilter::with_capacity(max_capacity)?;
 
@@ -105,21 +51,9 @@ impl CompressedAccountFilterSet {
         })
     }
 
-    /// Inserts an item into the map.
-    ///
-    /// Returns `Ok(true)` if the item was newly inserted, `Ok(false)` if it was
-    /// already present (idempotent).
-    ///
-    /// # Errors
-    ///
-    /// Returns [`TableFullError`] if the underlying cuckoo filter is saturated and
-    /// cannot accommodate the item. This typically means the map was under-sized
-    /// for the workload; rebuild with a larger `max_capacity`.
-    ///
-    /// On error, the map's state is unchanged — neither the [`HashSet`] nor the
-    /// [`CuckooFilter`] is mutated.
-    ///
-    /// [`HashSet`]: std::collections::HashSet
+    /// Inserts a key. `Ok(true)` if newly added, `Ok(false)` if already present (idempotent).
+    /// Errors [`TableFullError`] if the filter is saturated (map under-sized); state is
+    /// unchanged on error.
     pub fn insert(&mut self, key: Pubkey) -> Result<bool, TableFullError> {
         let bytes = key.to_bytes();
 
@@ -132,20 +66,8 @@ impl CompressedAccountFilterSet {
         Ok(true)
     }
 
-    /// Removes an item from the map.
-    ///
-    /// Returns `true` if the item was present and removed, `false` if it was not
-    /// in the map.
-    ///
-    /// # Safety over [`CuckooFilter::remove`]
-    ///
-    /// The underlying [`CuckooFilter`] has a known footgun: removing an item that
-    /// was never inserted can silently remove a different item that shares the
-    /// same fingerprint. [`CompressedAccountFilterSet`] prevents this by checking its internal
-    /// [`HashSet`] first and only touching the filter when the item is genuinely
-    /// present.
-    ///
-    /// [`HashSet`]: std::collections::HashSet
+    /// Removes a key; returns whether it was present. Safe unlike [`CuckooFilter::remove`]:
+    /// checks the `HashSet` first and only touches the filter when the key genuinely exists.
     pub fn remove(&mut self, key: Pubkey) -> bool {
         let bytes = key.to_bytes();
 
@@ -158,12 +80,7 @@ impl CompressedAccountFilterSet {
         }
     }
 
-    /// Checks if an item is in the map.
-    ///
-    /// Unlike [`CuckooFilter::contains`], this returns an exact answer — the
-    /// [`HashSet`] guarantees no false positives.
-    ///
-    /// [`HashSet`]: std::collections::HashSet
+    /// Exact membership (from the `HashSet`, no false positives), unlike [`CuckooFilter::contains`].
     pub fn contains(&self, key: Pubkey) -> bool {
         self.items.contains(&key.to_bytes())
     }
@@ -173,32 +90,13 @@ impl CompressedAccountFilterSet {
         self.items.len()
     }
 
-    /// Returns the number of items the map can hold without reallocating.
-    ///
-    /// Typically larger than the `max_capacity` passed to [`with_capacity`],
-    /// the underlying [`HashSet`] rounds allocation up to its own sizing
-    /// policy. Use this to check remaining headroom before a batch of inserts
-    /// or to report occupancy alongside [`len`].
-    ///
-    /// ```
-    /// use yellowstone_grpc_proto::cuckoo::CompressedAccountFilterSet;
-    ///
-    /// let map = CompressedAccountFilterSet::with_capacity(1000).unwrap();
-    /// assert!(map.capacity() >= 1000);
-    /// ```
-    ///
-    /// [`with_capacity`]: CompressedAccountFilterSet::with_capacity
-    /// [`len`]: CompressedAccountFilterSet::len
-    /// [`HashSet`]: std::collections::HashSet
+    /// Items the map can hold without reallocating (≥ the `with_capacity` argument; the
+    /// `HashSet` rounds up). Useful for headroom checks before a batch of inserts.
     pub fn capacity(&self) -> usize {
         self.items.capacity()
     }
 
-    /// Returns an iterator over the items in the map in arbitrary order.
-    ///
-    /// Reads from the internal [`HashSet`], so iteration order matches
-    /// `HashSet` semantics; no ordering guarantee, and two calls on the
-    /// same map may yield items in different orders.
+    /// Iterates items in arbitrary `HashSet` order (no ordering guarantee).
     pub fn iter(&self) -> impl Iterator<Item = &[u8; 32]> {
         self.items.iter()
     }
@@ -208,72 +106,26 @@ impl CompressedAccountFilterSet {
         self.items.is_empty()
     }
 
-    /// Returns `true` if the map has been mutated since the last call to
-    /// [`take_dirty`] (or since construction).
-    ///
-    /// Use this to check whether the filter needs to be re-sent without
-    /// clearing the flag.
-    ///
-    /// [`take_dirty`]: CompressedAccountFilterSet::take_dirty
+    /// `true` if mutated since the last [`take_dirty`](Self::take_dirty) (or construction);
+    /// does not clear the flag.
     pub const fn is_dirty(&self) -> bool {
         self.dirty
     }
 
-    /// Returns the dirty flag and clears it.
-    ///
-    /// Call this when transmitting the filter: if it returns `true`, rebuild
-    /// and send; if `false`, skip the send. Clearing means subsequent
-    /// mutations will flip the flag back to `true` for the next cycle.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use {
-    ///     solana_pubkey::Pubkey,
-    ///     yellowstone_grpc_proto::cuckoo::CompressedAccountFilterSet,
-    /// };
-    ///
-    /// let mut map = CompressedAccountFilterSet::with_capacity(100).unwrap();
-    /// assert!(!map.take_dirty());    // fresh map is clean
-    ///
-    /// map.insert(Pubkey::new_from_array([42u8; 32])).unwrap();
-    /// assert!(map.take_dirty());     // mutation flipped it
-    /// assert!(!map.take_dirty());    // and clearing it takes effect
-    /// ```
+    /// Returns the dirty flag and clears it. Call when transmitting: `true` → rebuild and send.
     pub fn take_dirty(&mut self) -> bool {
         let dirty = self.dirty;
         self.dirty = false;
         dirty
     }
 
-    /// Serializes the underlying cuckoo filter to its proto wire format.
-    ///
-    /// The returned proto carries all parameters needed for deserialization on
-    /// the server side or in cross-language clients: bucket count, entries per
-    /// bucket, fingerprint bits, and the hash seed.
+    /// Serializes the cuckoo filter to proto wire format (carries bucket geometry + hash seed).
     pub fn to_proto(&self) -> ProtoCuckooFilter {
         ProtoCuckooFilter::from(&self.filter)
     }
 
-    /// Returns a `SubscribeRequestFilterAccounts` that carries only this cuckoo
-    /// filter in essence no explicit account list, no owner, no predicates.
-    ///
-    /// Use this when you want to add the cuckoo filter to a subscribe request
-    /// yourself, under a name of your choosing, alongside other account filters
-    /// or other subscription types:
-    ///
-    /// ```no_run
-    /// use {
-    ///     solana_pubkey::Pubkey,
-    ///     yellowstone_grpc_proto::{cuckoo::CompressedAccountFilterSet, geyser::SubscribeRequest},
-    /// };
-    ///
-    /// let mut map = CompressedAccountFilterSet::with_capacity(1000).unwrap();
-    /// map.insert(Pubkey::new_from_array([1u8; 32])).unwrap();
-    ///
-    /// let mut req = SubscribeRequest::default();
-    /// req.accounts.insert("my_cuckoo".to_string(), map.to_account_filter());
-    /// ```
+    /// A `SubscribeRequestFilterAccounts` carrying only this cuckoo filter (no account list,
+    /// owner, or predicates) — add it to a request under a name of your choosing.
     pub fn to_account_filter(&self) -> SubscribeRequestFilterAccounts {
         SubscribeRequestFilterAccounts {
             account: vec![],
@@ -284,30 +136,8 @@ impl CompressedAccountFilterSet {
         }
     }
 
-    /// Inserts this cuckoo filter into `req.accounts` under the given name.
-    ///
-    /// Existing entries in `req.accounts` are preserved. If an entry already
-    /// exists under `name`, it is replaced. Other fields of `req` (transactions,
-    /// blocks, slots, etc.) are untouched.
-    ///
-    /// Marks the map as clean — subsequent mutations will flip the dirty flag
-    /// back to `true` for the next transmission cycle.
-    ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// use {
-    ///     solana_pubkey::Pubkey,
-    ///     yellowstone_grpc_proto::{cuckoo::CompressedAccountFilterSet, geyser::SubscribeRequest},
-    /// };
-    ///
-    /// let mut map = CompressedAccountFilterSet::with_capacity(1000).unwrap();
-    /// map.insert(Pubkey::new_from_array([1u8; 32])).unwrap();
-    ///
-    /// let mut req = SubscribeRequest::default();
-    /// map.insert_into_subscribe_request(&mut req, "tracked_accounts");
-    /// // req.accounts["tracked_accounts"] now carries the cuckoo filter
-    /// ```
+    /// Inserts this filter into `req.accounts` under `name` (replacing any existing entry,
+    /// preserving others) and marks the map clean.
     pub fn insert_into_subscribe_request(&mut self, req: &mut SubscribeRequest, name: &str) {
         req.accounts
             .insert(name.to_string(), self.to_account_filter());

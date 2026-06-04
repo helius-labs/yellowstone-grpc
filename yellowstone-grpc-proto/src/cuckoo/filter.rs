@@ -1,44 +1,10 @@
-//! Cuckoo filter implementation for probabilistic set membership.
+//! Cuckoo filter: probabilistic set membership (`insert`/`contains`/`remove`).
 //!
-//! A cuckoo filter is a space-efficient data structure that supports:
-//! - `insert`: Add an item to the set
-//! - `contains`: Check if an item is probably in the set
-//! - `remove`: Remove an item from the set
-//!
-//! Key properties:
-//! - **No false negatives**: If `contains` returns `false`, the item is definitely not in the set
-//! - **Bounded false positives**: If `contains` returns `true`, the item is probably in the set
-//!   (<1% false positive rate at full load with default configuration)
-//! - **Space efficient**: 2M items compress to ~2-3MB (vs 64MB for an explicit pubkey list)
-//! - **Deterministic hashing**: Uses SipHash-2-4 with a configurable seed, making filter
-//!   bytes wire-compatible across Rust versions and client languages
-//!
-//! # Example
-//!
-//! ```
-//! use yellowstone_grpc_proto::cuckoo::CuckooFilter;
-//!
-//! let mut filter = CuckooFilter::<&str>::with_capacity(1000).unwrap();
-//! filter.insert(&"hello").unwrap();
-//! assert!(filter.contains(&"hello"));
-//! assert!(!filter.contains(&"world"));
-//! filter.remove(&"hello");
-//! assert!(!filter.contains(&"hello"));
-//! ```
-//!
-//! # Wire Format
-//!
-//! The filter serializes to a `CuckooFilter` proto message containing:
-//! - `data`: Raw bucket bytes (little-endian u16 fingerprints)
-//! - `bucket_count`: Number of buckets (power of 2)
-//! - `entries_per_bucket`: Slots per bucket (4)
-//! - `fingerprint_bits`: Bits per fingerprint (16)
-//! - `hash_seed`: Seed for the SipHash hasher
-//!
-//! The seed is carried on the wire rather than hardcoded, so client and server
-//! produce matching hashes without needing to agree on a constant out-of-band.
-//! Cross-language clients must use SipHash-2-4 with the same seed-to-key
-//! derivation (see `YellowstoneHasherBuilder::keys_from_seed`).
+//! No false negatives; <1% false positives at full load. ~2-3MB for 2M items
+//! (vs 64MB for an explicit pubkey list). Hashing is SipHash-2-4 with a seed
+//! carried on the wire, so filters are byte-compatible across Rust versions and
+//! client languages. Wire form is the `CuckooFilter` proto (LE u16 fingerprints
+//! in `data`, plus self-describing bucket_count/entries/fp_bits/hash_seed).
 
 use {
     super::{
@@ -53,33 +19,18 @@ use {
     },
 };
 
-/// Fingerprint type. Must match FINGERPRINT_BITS.
 type Fingerprint = u16; // must match FINGERPRINT_BITS
+type Bucket = [Fingerprint; ENTRIES_PER_BUCKET]; // 0 = empty slot
 
-/// A bucket holds ENTRIES_PER_BUCKET fingerprints. Value 0 means empty slot.
-type Bucket = [Fingerprint; ENTRIES_PER_BUCKET];
-
-/// A space-efficient probabilistic set membership filter.
+/// Probabilistic set storing fingerprints, not items: ~3 bytes/item at 95% load,
+/// O(1) insert/lookup/remove.
 ///
-/// Stores fingerprints (short hashes) of items rather than items themselves,
-/// achieving ~3 bytes per item at 95% load factor. Supports insert, lookup,
-/// and delete operations with O(1) amortized cost.
+/// `T` is the item type (one filter can't mix `&str` and `u64`); `S` is the hasher,
+/// defaulting to wire-stable [`YellowstoneHasherBuilder`]. Custom hashers (via
+/// [`with_capacity_and_hasher`]) are in-process only, not wire-compatible.
 ///
-/// # Type Parameters
-///
-/// - `T`: The item type. Typed at the struct level so a single filter can only
-///   hold items of one type — you cannot accidentally mix `&str` and `u64` in
-///   the same filter.
-/// - `S`: The hasher builder. Defaults to [`YellowstoneHasherBuilder`] which
-///   uses SipHash-2-4 for stable, wire-compatible hashing. Custom hashers can
-///   be supplied via [`with_capacity_and_hasher`] for in-process use, but are
-///   not wire-compatible with the default.
-///
-/// # Footgun: `remove`
-///
-/// Calling `remove` on an item that was never inserted may accidentally remove
-/// a different item that shares the same fingerprint. For safe tracked usage,
-/// prefer [`CompressedAccountFilterSet`] which guards removes against this case.
+/// `remove` on a never-inserted item may clear a fingerprint-colliding entry; use
+/// [`CompressedAccountFilterSet`] for tracked removes.
 ///
 /// [`with_capacity_and_hasher`]: CuckooFilter::with_capacity_and_hasher
 /// [`CompressedAccountFilterSet`]: crate::cuckoo::CompressedAccountFilterSet
@@ -91,30 +42,9 @@ pub struct CuckooFilter<T, S = YellowstoneHasherBuilder> {
 }
 
 impl<T> CuckooFilter<T, YellowstoneHasherBuilder> {
-    /// Creates a filter sized to hold `max_capacity` items using the default hasher.
+    /// Filter sized for `max_capacity` items using the default ([`DEFAULT_HASH_SEED`])
+    /// hasher. Errors [`CuckooBuildError::CapacityOverflow`] if it can't be allocated.
     ///
-    /// Uses [`YellowstoneHasherBuilder::default`] which seeds SipHash with
-    /// [`DEFAULT_HASH_SEED`]. The resulting filter serializes to a proto with
-    /// the default seed on the wire.
-    ///
-    /// For custom seeds or hasher builders, use [`with_capacity_and_hasher`].
-    ///
-    /// # Errors
-    ///
-    /// Returns [`CuckooBuildError::CapacityOverflow`] if `max_capacity` requires
-    /// more buckets than the system can allocate.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use yellowstone_grpc_proto::cuckoo::CuckooFilter;
-    ///
-    /// let mut filter = CuckooFilter::<u64>::with_capacity(100).unwrap();
-    /// filter.insert(&42).unwrap();
-    /// assert!(filter.contains(&42));
-    /// ```
-    ///
-    /// [`with_capacity_and_hasher`]: CuckooFilter::with_capacity_and_hasher
     /// [`DEFAULT_HASH_SEED`]: crate::cuckoo::DEFAULT_HASH_SEED
     pub fn with_capacity(max_capacity: usize) -> Result<Self, CuckooBuildError> {
         Self::with_capacity_and_hasher(max_capacity, YellowstoneHasherBuilder::default())
@@ -122,35 +52,11 @@ impl<T> CuckooFilter<T, YellowstoneHasherBuilder> {
 }
 
 impl<T, S: BuildHasher> CuckooFilter<T, S> {
-    /// Creates a filter with a custom hasher builder.
-    ///
-    /// The filter's actual bucket count is rounded up to the next power of two
-    /// and adjusted for the target load factor (~95%), so the allocated capacity
-    /// may be slightly larger than `max_capacity`.
-    ///
-    /// # Wire Compatibility
-    ///
-    /// Only filters built with [`YellowstoneHasherBuilder`] are wire-compatible with
-    /// filters reconstructed via `From<&ProtoCuckooFilter>`. Custom hasher types
-    /// are useful for tests, benchmarks, and in-process scenarios where the filter
-    /// never crosses a process boundary.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`CuckooBuildError::CapacityOverflow`] if the requested capacity
-    /// cannot be allocated.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use yellowstone_grpc_proto::cuckoo::{CuckooFilter, YellowstoneHasherBuilder};
-    ///
-    /// let filter = CuckooFilter::<u64, YellowstoneHasherBuilder>::with_capacity_and_hasher(
-    ///     1000,
-    ///     YellowstoneHasherBuilder::default(),
-    /// ).unwrap();
-    /// assert!(!filter.contains(&42));
-    /// ```
+    /// Filter with a custom hasher. Bucket count is rounded up to a power of two at
+    /// ~95% load, so allocated capacity may exceed `max_capacity`. Only
+    /// [`YellowstoneHasherBuilder`] is wire-compatible with `From<&ProtoCuckooFilter>`;
+    /// custom hashers are in-process only (tests/benches). Errors
+    /// [`CuckooBuildError::CapacityOverflow`] if it can't be allocated.
     pub fn with_capacity_and_hasher(
         max_capacity: usize,
         hasher_builder: S,
@@ -219,20 +125,10 @@ impl<T, S: BuildHasher> CuckooFilter<T, S> {
 }
 
 impl<T: Hash, S: BuildHasher> CuckooFilter<T, S> {
-    /// Inserts an item into the filter.
-    ///
-    /// Uses partial-key cuckoo hashing: when both candidate buckets are full,
-    /// an existing fingerprint is evicted and relocated to its alternate bucket.
-    /// If no relocation path succeeds within [`MAX_KICKS`] attempts, the filter
-    /// is considered saturated.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`TableFullError`] if the filter could not accommodate the item.
-    /// This typically indicates the filter was under-sized for the workload;
-    /// rebuild with a larger `max_capacity`.
-    ///
-    /// [`MAX_KICKS`]: crate::cuckoo
+    /// Inserts an item. Partial-key cuckoo: if both candidate buckets are full,
+    /// relocates an existing fingerprint to its alternate bucket. Errors
+    /// [`TableFullError`] after `MAX_KICKS` failed relocations (filter under-sized
+    /// — rebuild with a larger `max_capacity`).
     pub fn insert(&mut self, item: &T) -> Result<(), TableFullError> {
         let fp = self.fingerprint(item);
         let h = self.hash(item);
@@ -263,16 +159,10 @@ impl<T: Hash, S: BuildHasher> CuckooFilter<T, S> {
         Err(TableFullError)
     }
 
-    /// Checks if an item is probably in the filter.
+    /// Probable membership: `false` = definitely absent (no false negatives),
+    /// `true` = probably present (small false-positive chance).
+    /// [`CompressedAccountFilterSet`] keeps an exact `HashSet` alongside for precise checks.
     ///
-    /// - Returns `false`: the item is definitely not in the filter (no false negatives)
-    /// - Returns `true`: the item is probably in the filter (small false positive chance)
-    ///
-    /// False positives are the fundamental tradeoff of probabilistic filters. For
-    /// exact membership checks, maintain a [`HashSet`] alongside the filter; this
-    /// is what [`CompressedAccountFilterSet`] does internally.
-    ///
-    /// [`HashSet`]: std::collections::HashSet
     /// [`CompressedAccountFilterSet`]: crate::cuckoo::CompressedAccountFilterSet
     #[inline]
     pub fn contains(&self, item: &T) -> bool {
@@ -284,17 +174,9 @@ impl<T: Hash, S: BuildHasher> CuckooFilter<T, S> {
         self.bucket_contains(i1, fp) || self.bucket_contains(i2, fp)
     }
 
-    /// Removes an item from the filter.
-    ///
-    /// Returns `true` if a matching fingerprint was found and cleared, `false`
-    /// if no matching fingerprint existed.
-    ///
-    /// # Warning
-    ///
-    /// Only remove items that were previously inserted. The filter stores
-    /// fingerprints, not items and removing an item that shares a fingerprint with
-    /// a different inserted item will remove the wrong entry. For safely tracked
-    /// removes, use [`CompressedAccountFilterSet`] which keeps an exact-membership guard.
+    /// Removes an item; returns whether a matching fingerprint was cleared.
+    /// Only remove previously-inserted items — a fingerprint collision can clear the
+    /// wrong entry. [`CompressedAccountFilterSet`] guards against this.
     ///
     /// [`CompressedAccountFilterSet`]: crate::cuckoo::CompressedAccountFilterSet
     pub fn remove(&mut self, item: &T) -> bool {
@@ -306,8 +188,7 @@ impl<T: Hash, S: BuildHasher> CuckooFilter<T, S> {
         self.try_remove_from_bucket(i1, fp) || self.try_remove_from_bucket(i2, fp)
     }
 
-    /// Extracts a fingerprint from an item's hash.
-    /// Returns upper 16 bits, ensuring non-zero (0 = empty slot).
+    /// Fingerprint from the hash's upper 16 bits, forced non-zero (0 = empty slot).
     #[inline]
     fn fingerprint(&self, item: &T) -> Fingerprint {
         let h = self.hash(item);
@@ -320,16 +201,9 @@ impl<T: Hash, S: BuildHasher> CuckooFilter<T, S> {
     }
 }
 
-/// Deserializes from proto wire format.
-///
-/// The seed from `proto.hash_seed` is preserved into the reconstructed filter,
-/// so subsequent `contains` calls match what the serializing side computed.
-/// Callers do not need to negotiate a seed out-of-band.
-///
-/// Handles malformed input gracefully:
-/// - Empty data → single empty bucket
-/// - Odd bytes → truncated (via chunks_exact)
-/// - Misaligned data → incomplete buckets dropped
+/// Wire → runtime. Rebuilds the hasher from `proto.hash_seed` so `contains` matches
+/// the serializer. Malformed input is tolerated: empty → one empty bucket; stray
+/// bytes dropped via `chunks_exact`.
 impl<T> From<&ProtoCuckooFilter> for CuckooFilter<T, YellowstoneHasherBuilder> {
     fn from(proto: &ProtoCuckooFilter) -> Self {
         let hasher_builder = YellowstoneHasherBuilder::new(proto.hash_seed);
@@ -367,11 +241,7 @@ impl<T> From<&ProtoCuckooFilter> for CuckooFilter<T, YellowstoneHasherBuilder> {
     }
 }
 
-/// Serializes to proto wire format for cross-language interop.
-///
-/// The filter's seed is written to `hash_seed` so deserialization can
-/// reconstruct a matching hasher. All other parameters (bucket count,
-/// entries per bucket, fingerprint bits) are self-describing on the wire.
+/// Runtime → wire. Writes the seed to `hash_seed`; bucket geometry is self-describing.
 impl<T> From<&CuckooFilter<T, YellowstoneHasherBuilder>> for ProtoCuckooFilter {
     fn from(filter: &CuckooFilter<T, YellowstoneHasherBuilder>) -> Self {
         let data: Vec<u8> = filter

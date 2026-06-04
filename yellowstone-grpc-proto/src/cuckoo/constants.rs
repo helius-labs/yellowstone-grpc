@@ -7,23 +7,9 @@ pub(crate) const LOAD_FACTOR: f64 = 0.95;
 /// Maximum relocations before declaring table full.
 pub(crate) const MAX_KICKS: usize = 500;
 
-/// Fingerprint size in bits. 16 bits gives ~0.0001% false positive rate.
+/// Fingerprint width. 16 bits → ~0.01% false-positive rate (2·entries/2^16).
 pub(crate) const FINGERPRINT_BITS: u32 = 16;
 
-/// Default seed for [`YellowstoneHasherBuilder`]. ASCII: "yllwstn!"
-///
-/// Serves as the stable default used by filters constructed via
-/// [`CuckooFilter::with_capacity`] or [`CompressedAccountFilterSet::with_capacity`]. The seed
-/// in use is always serialized into the proto's `hash_seed` field, so filters
-/// built with this default remain readable even if the default changes in a
-/// future version.
-///
-/// Exposed publicly so callers who want to construct a builder with the
-/// default seed explicitly (rather than via [`YellowstoneHasherBuilder::default`])
-/// can reference it by name.
-///
-/// [`YellowstoneHasherBuilder`]: crate::cuckoo::YellowstoneHasherBuilder
-/// [`CuckooFilter::with_capacity`]: crate::cuckoo::CuckooFilter::with_capacity
-/// [`CompressedAccountFilterSet::with_capacity`]: crate::cuckoo::CompressedAccountFilterSet::with_capacity
-/// [`YellowstoneHasherBuilder::default`]: crate::cuckoo::YellowstoneHasherBuilder::default
+/// Default SipHash seed (ASCII "yllwstn!"). The seed in use is always serialized into the
+/// proto `hash_seed`, so filters built with it stay readable even if this default changes.
 pub const DEFAULT_HASH_SEED: u64 = 0x_796c_6c77_7374_6e21;
