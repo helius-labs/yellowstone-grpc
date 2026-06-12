@@ -1222,6 +1222,7 @@ mod tests {
                 account: vec![],
                 owner: vec![],
                 filters: vec![],
+                cuckoo_accounts_filter: None,
             },
         );
 
@@ -1520,6 +1521,7 @@ mod tests {
                 account_include,
                 account_exclude: vec![],
                 account_required,
+                token_accounts: None,
             },
         );
 
@@ -1593,6 +1595,7 @@ mod tests {
                 account_include,
                 account_exclude: vec![],
                 account_required,
+                token_accounts: None,
             },
         );
 
