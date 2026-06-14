@@ -148,6 +148,10 @@ message SubscribeRequestFilterTransactions {
   repeated string account_include = 3;
   repeated string account_exclude = 4;
   repeated string account_required = 6;
+  // Helius extension: compact cuckoo filter for account_include. OR-combined
+  // with the explicit account_include set; lets clients track very large
+  // include sets (millions) without re-uploading explicit pubkeys.
+  optional CuckooFilter cuckoo_account_include = 7;
   // Helius extension: ATA / token-account expansion control.
   // One of "none" (default), "balanceChanged", "all".
   optional string token_accounts = 30;
