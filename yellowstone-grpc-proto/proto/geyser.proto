@@ -149,8 +149,9 @@ message SubscribeRequestFilterTransactions {
   repeated string account_exclude = 4;
   repeated string account_required = 6;
   // Helius extension: compact cuckoo filter for account_include, OR-combined
-  // with the explicit account_include set.
-  optional CuckooFilter cuckoo_account_include = 7;
+  // with the explicit account_include set. Field 31 keeps clear of upstream
+  // Triton's lower field numbers to avoid future collisions.
+  optional CuckooFilter cuckoo_account_include = 31;
   // Helius extension: ATA / token-account expansion control. When set,
   // account_include / account_exclude / account_required also match
   // against owners of pre/post token balances on each transaction.
