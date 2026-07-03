@@ -456,11 +456,17 @@ impl FilterAccountsState {
             return false;
         }
         for (offset, bytes) in self.memcmp.iter() {
-            if data.len() < *offset + bytes.len() {
+            // `offset` is a client-supplied u64 with no upper bound, so guard
+            // against `offset + bytes.len()` overflowing usize (which would
+            // otherwise panic here or on the slice below). An offset that does
+            // not fit within the account data simply never matches.
+            let Some(end) = offset.checked_add(bytes.len()) else {
+                return false;
+            };
+            if data.len() < end {
                 return false;
             }
-            let data = &data[*offset..*offset + bytes.len()];
-            if data != bytes {
+            if &data[*offset..end] != bytes {
                 return false;
             }
         }
@@ -1615,5 +1621,33 @@ mod tests {
         for message in filter.get_updates(&message, None) {
             assert!(message.filters.is_empty());
         }
+    }
+
+    #[test]
+    fn test_memcmp_offset_does_not_overflow() {
+        use {
+            super::FilterAccountsState,
+            crate::geyser::{
+                subscribe_request_filter_accounts_filter::Filter as AccountsFilterDataOneof,
+                subscribe_request_filter_accounts_filter_memcmp::Data as AccountsFilterMemcmpOneof,
+                SubscribeRequestFilterAccountsFilter, SubscribeRequestFilterAccountsFilterMemcmp,
+            },
+        };
+
+        // A client picks the memcmp `offset` (an unbounded u64) directly in the
+        // subscribe request and it is never range-checked. Computing
+        // `offset + bytes.len()` while matching account data must not overflow
+        // `usize` and panic; an offset that cannot fit simply never matches.
+        let filters = vec![SubscribeRequestFilterAccountsFilter {
+            filter: Some(AccountsFilterDataOneof::Memcmp(
+                SubscribeRequestFilterAccountsFilterMemcmp {
+                    offset: u64::MAX,
+                    data: Some(AccountsFilterMemcmpOneof::Bytes(vec![1, 2, 3])),
+                },
+            )),
+        }];
+        let state = FilterAccountsState::new(&filters).expect("filter state should build");
+
+        assert!(!state.is_match(&[0u8; 64], 0));
     }
 }
