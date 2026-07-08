@@ -261,6 +261,7 @@ impl Filter {
 struct FilterAccounts {
     nonempty_txn_signature: Vec<(FilterName, Option<bool>)>,
     nonempty_txn_signature_required: HashSet<FilterName>,
+    diff_only: HashSet<FilterName>,
     account: HashMap<Pubkey, HashSet<FilterName>>,
     account_required: HashSet<FilterName>,
     owner: HashMap<Pubkey, HashSet<FilterName>>,
@@ -283,6 +284,9 @@ impl FilterAccounts {
             if filter.nonempty_txn_signature.is_some() {
                 this.nonempty_txn_signature_required
                     .insert(names.get(name)?);
+            }
+            if filter.diff_only == Some(true) {
+                this.diff_only.insert(names.get(name)?);
             }
 
             FilterLimits::check_any(
@@ -340,6 +344,7 @@ impl FilterAccounts {
         accounts_data_slice: &FilterAccountsDataSlice,
     ) -> FilteredUpdates {
         let mut filter = FilterAccountsMatch::new(self);
+        filter.match_modified(message.account.modified);
         filter.match_txn_signature(&message.account.txn_signature);
         filter.match_account(&message.account.pubkey);
         filter.match_owner(&message.account.owner);
@@ -505,6 +510,7 @@ struct FilterAccountsMatch<'a> {
     account: HashSet<&'a str>,
     owner: HashSet<&'a str>,
     data: HashSet<&'a str>,
+    modified: Option<bool>,
 }
 
 impl<'a> FilterAccountsMatch<'a> {
@@ -515,7 +521,12 @@ impl<'a> FilterAccountsMatch<'a> {
             account: Default::default(),
             owner: Default::default(),
             data: Default::default(),
+            modified: None,
         }
+    }
+
+    fn match_modified(&mut self, modified: Option<bool>) {
+        self.modified = modified;
     }
 
     fn extend(
@@ -568,6 +579,12 @@ impl<'a> FilterAccountsMatch<'a> {
                 if af.nonempty_txn_signature_required.contains(name)
                     && !self.nonempty_txn_signature.contains(name)
                 {
+                    return None;
+                }
+                // diff_only: suppress only when the validator positively said
+                // "unchanged". None (old validator or non-transaction store)
+                // must deliver — never silently miss an update.
+                if af.diff_only.contains(name) && self.modified == Some(false) {
                     return None;
                 }
                 if af.account_required.contains(name) && !self.account.contains(name) {
@@ -1223,6 +1240,7 @@ mod tests {
                 owner: vec![],
                 filters: vec![],
                 cuckoo_accounts_filter: None,
+                diff_only: None,
             },
         );
 

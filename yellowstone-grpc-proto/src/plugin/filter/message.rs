@@ -187,6 +187,7 @@ impl FilteredUpdate {
             data: data_slice.get_slice(&message.data),
             write_version: message.write_version,
             txn_signature: message.txn_signature.map(|s| s.as_ref().into()),
+            modified: message.modified,
         }
     }
 
@@ -554,6 +555,10 @@ impl FilteredUpdateAccount {
         if let Some(value) = &account.txn_signature {
             prost_bytes_encode_raw(8u32, value.as_ref(), buf);
         }
+        // Some(false) must go on the wire — it is the suppression signal.
+        if let Some(value) = &account.modified {
+            ::prost::encoding::bool::encode(9u32, value, buf);
+        }
     }
 
     fn account_encoded_len(
@@ -592,6 +597,9 @@ impl FilteredUpdateAccount {
             + account
                 .txn_signature
                 .map_or(0, |sig| prost_bytes_encoded_len(8u32, sig.as_ref()))
+            + account
+                .modified
+                .map_or(0, |value| ::prost::encoding::bool::encoded_len(9u32, &value))
     }
 }
 
@@ -1098,16 +1106,19 @@ pub mod tests {
                     ] {
                         for write_version in [0, 1] {
                             for txn_signature in [None, Some(txn_signature)] {
-                                accounts.push(Arc::new(MessageAccountInfo {
-                                    pubkey,
-                                    lamports,
-                                    owner,
-                                    executable,
-                                    rent_epoch,
-                                    data: data.clone(),
-                                    write_version,
-                                    txn_signature,
-                                }));
+                                for modified in [None, Some(true), Some(false)] {
+                                    accounts.push(Arc::new(MessageAccountInfo {
+                                        pubkey,
+                                        lamports,
+                                        owner,
+                                        executable,
+                                        rent_epoch,
+                                        data: data.clone(),
+                                        write_version,
+                                        txn_signature,
+                                        modified,
+                                    }));
+                                }
                             }
                         }
                     }
