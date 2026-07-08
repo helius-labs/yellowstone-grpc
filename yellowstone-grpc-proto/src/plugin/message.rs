@@ -193,6 +193,9 @@ pub struct MessageAccountInfo {
     pub data: Vec<u8>,
     pub write_version: u64,
     pub txn_signature: Option<Signature>,
+    /// Whether the transaction actually changed this account's state.
+    /// `None` when unknown (old validator or non-transaction store).
+    pub modified: Option<bool>,
 }
 
 impl MessageAccountInfo {
@@ -206,6 +209,8 @@ impl MessageAccountInfo {
             data: info.data.into(),
             write_version: info.write_version,
             txn_signature: info.txn.map(|txn| *txn.signature()),
+            // ReplicaAccountInfoV3 does not carry the modified flag.
+            modified: None,
         }
     }
 
@@ -224,6 +229,7 @@ impl MessageAccountInfo {
                     Signature::try_from(sig.as_slice()).map_err(|_| "invalid signature length")
                 })
                 .transpose()?,
+            modified: msg.modified,
         })
     }
 }

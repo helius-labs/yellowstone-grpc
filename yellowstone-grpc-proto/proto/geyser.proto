@@ -92,6 +92,8 @@ message SubscribeRequestFilterAccounts {
   repeated SubscribeRequestFilterAccountsFilter filters = 4;
   optional bool nonempty_txn_signature = 5;
   optional CuckooFilter cuckoo_accounts_filter = 6;
+  // Suppress updates the validator marked as not modified (modified == false).
+  optional bool diff_only = 7;
 }
 
 // Hash algorithm for a CuckooFilter (on the wire for forward-compat).
@@ -223,6 +225,9 @@ message SubscribeUpdateAccountInfo {
   bytes data = 6;
   uint64 write_version = 7;
   optional bytes txn_signature = 8;
+  // Whether the transaction actually changed this account's state.
+  // Unset when unknown (old validator or non-transaction store).
+  optional bool modified = 9;
 }
 
 message SubscribeUpdateSlot {
