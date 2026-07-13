@@ -1223,6 +1223,7 @@ mod tests {
                 owner: vec![],
                 filters: vec![],
                 cuckoo_accounts_filter: None,
+                only_modified: None,
             },
         );
 
