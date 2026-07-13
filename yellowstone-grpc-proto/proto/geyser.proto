@@ -92,6 +92,10 @@ message SubscribeRequestFilterAccounts {
   repeated SubscribeRequestFilterAccountsFilter filters = 4;
   optional bool nonempty_txn_signature = 5;
   optional CuckooFilter cuckoo_accounts_filter = 6;
+  // Client opt-in: only deliver account updates that were actually mutated by a
+  // transaction, dropping write-locked-but-unchanged accounts. Laserstream
+  // enforces this using its internal is_unmodified ingest signal.
+  optional bool only_modified = 7;
 }
 
 // Hash algorithm for a CuckooFilter (on the wire for forward-compat).
