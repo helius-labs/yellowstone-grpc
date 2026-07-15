@@ -105,6 +105,7 @@ async fn main() -> anyhow::Result<()> {
                 account_exclude: args.account_exclude,
                 account_required: args.account_required,
                 token_accounts: None,
+                cuckoo_account_include: None,
             } },
             entry: HashMap::new(),
             blocks: HashMap::new(),

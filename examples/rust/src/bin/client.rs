@@ -512,6 +512,7 @@ impl Action {
                             account_exclude: args.transactions_account_exclude.clone(),
                             account_required: args.transactions_account_required.clone(),
                             token_accounts: None,
+                            cuckoo_account_include: None,
                         },
                     );
                 }
@@ -528,6 +529,7 @@ impl Action {
                             account_exclude: args.transactions_status_account_exclude.clone(),
                             account_required: args.transactions_status_account_required.clone(),
                             token_accounts: None,
+                            cuckoo_account_include: None,
                         },
                     );
                 }
