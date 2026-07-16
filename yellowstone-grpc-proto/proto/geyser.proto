@@ -86,18 +86,27 @@ message SubscribeRequest {
   optional uint64 from_slot = 11;
 }
 
+// Which account updates a subscriber wants delivered. `LOCKED` (the default,
+// zero-value) keeps current behavior: every write-locked account. `WRITTEN`
+// opts into delivery of only accounts a transaction actually mutated, dropping
+// write-locked-but-unchanged ones. Laserstream enforces `WRITTEN` using its
+// internal is_unmodified ingest signal.
+enum AccountState {
+  ACCOUNT_STATE_LOCKED = 0;
+  ACCOUNT_STATE_WRITTEN = 1;
+}
+
 message SubscribeRequestFilterAccounts {
   repeated string account = 2;
   repeated string owner = 3;
   repeated SubscribeRequestFilterAccountsFilter filters = 4;
   optional bool nonempty_txn_signature = 5;
   optional CuckooFilter cuckoo_accounts_filter = 6;
-  // Client opt-in: only deliver account updates that were actually mutated by a
-  // transaction, dropping write-locked-but-unchanged accounts. Laserstream
-  // enforces this using its internal is_unmodified ingest signal.
+  // Client opt-in: which write-locked accounts to deliver. Unset / LOCKED =
+  // current behavior (all); WRITTEN = only mutated accounts.
   // High tag number: this is a Helius-internal extension, kept clear of the
   // low-numbered range upstream may extend.
-  optional bool only_modified = 31;
+  AccountState account_state = 31;
 }
 
 // Hash algorithm for a CuckooFilter (on the wire for forward-compat).

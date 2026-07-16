@@ -133,7 +133,7 @@ impl CompressedAccountFilterSet {
             filters: vec![],
             nonempty_txn_signature: None,
             cuckoo_accounts_filter: Some(self.to_proto()),
-            only_modified: None,
+            account_state: 0, // ACCOUNT_STATE_LOCKED (default)
         }
     }
 
