@@ -56,20 +56,6 @@ dependencies = [
 
 [[package]]
 name = "agave-feature-set"
-version = "4.1.0"
-source = "git+https://github.com/helius-labs/agave?branch=v4.1.0-helius#d3f1f55c65143b1f9ad0474644fb28b767bd79db"
-dependencies = [
- "ahash",
- "solana-epoch-schedule",
- "solana-hash",
- "solana-keypair",
- "solana-pubkey 4.2.0",
- "solana-sha256-hasher",
- "solana-svm-feature-set 4.1.0",
-]
-
-[[package]]
-name = "agave-feature-set"
 version = "4.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d4790979fc2a3c1c494c9cb84e8b514da4b8c6a992a460a077b31b07657606f8"
@@ -80,13 +66,14 @@ dependencies = [
  "solana-keypair",
  "solana-pubkey 4.2.0",
  "solana-sha256-hasher",
- "solana-svm-feature-set 4.1.2",
+ "solana-svm-feature-set",
 ]
 
 [[package]]
 name = "agave-geyser-plugin-interface"
-version = "4.1.0"
-source = "git+https://github.com/helius-labs/agave?branch=v4.1.0-helius#d3f1f55c65143b1f9ad0474644fb28b767bd79db"
+version = "4.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "39cfcdaf74b41fc2a8446a9659de85fae8a726b53a6c6396f86d9d21599059be"
 dependencies = [
  "log",
  "solana-clock",
@@ -94,18 +81,8 @@ dependencies = [
  "solana-message",
  "solana-signature",
  "solana-transaction",
- "solana-transaction-status 4.1.0",
+ "solana-transaction-status",
  "thiserror 2.0.18",
-]
-
-[[package]]
-name = "agave-reserved-account-keys"
-version = "4.1.0"
-source = "git+https://github.com/helius-labs/agave?branch=v4.1.0-helius#d3f1f55c65143b1f9ad0474644fb28b767bd79db"
-dependencies = [
- "agave-feature-set 4.1.0",
- "solana-pubkey 4.2.0",
- "solana-sdk-ids",
 ]
 
 [[package]]
@@ -114,7 +91,7 @@ version = "4.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ea33710f30b13f62e6d73dbbb114117029d29539cb9439c30ef39a0736f935cc"
 dependencies = [
- "agave-feature-set 4.1.2",
+ "agave-feature-set",
  "solana-pubkey 4.2.0",
  "solana-sdk-ids",
 ]
@@ -2542,47 +2519,6 @@ dependencies = [
 
 [[package]]
 name = "solana-account-decoder"
-version = "4.1.0"
-source = "git+https://github.com/helius-labs/agave?branch=v4.1.0-helius#d3f1f55c65143b1f9ad0474644fb28b767bd79db"
-dependencies = [
- "Inflector",
- "base64",
- "bincode",
- "bs58",
- "bv",
- "serde",
- "serde_json",
- "solana-account 4.3.1",
- "solana-account-decoder-client-types 4.1.0",
- "solana-address-lookup-table-interface",
- "solana-clock",
- "solana-config-interface",
- "solana-epoch-schedule",
- "solana-fee-calculator",
- "solana-instruction",
- "solana-loader-v3-interface",
- "solana-nonce",
- "solana-program-option",
- "solana-program-pack",
- "solana-pubkey 4.2.0",
- "solana-rent 4.3.0",
- "solana-sdk-ids",
- "solana-slot-hashes",
- "solana-slot-history",
- "solana-stake-interface",
- "solana-sysvar 4.1.0",
- "solana-vote-interface",
- "spl-generic-token",
- "spl-token-2022-interface 2.1.0",
- "spl-token-group-interface",
- "spl-token-interface",
- "spl-token-metadata-interface 0.8.0",
- "thiserror 2.0.18",
- "zstd",
-]
-
-[[package]]
-name = "solana-account-decoder"
 version = "4.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1daf7a9ad1ba8952f79d02ff2ff2f75d789bfb9c33aa53da4a377de86c5da02e"
@@ -2595,7 +2531,7 @@ dependencies = [
  "serde",
  "serde_json",
  "solana-account 4.3.1",
- "solana-account-decoder-client-types 4.1.2",
+ "solana-account-decoder-client-types",
  "solana-address-lookup-table-interface",
  "solana-clock",
  "solana-config-interface",
@@ -2620,20 +2556,6 @@ dependencies = [
  "spl-token-interface",
  "spl-token-metadata-interface 0.8.0",
  "thiserror 2.0.18",
- "zstd",
-]
-
-[[package]]
-name = "solana-account-decoder-client-types"
-version = "4.1.0"
-source = "git+https://github.com/helius-labs/agave?branch=v4.1.0-helius#d3f1f55c65143b1f9ad0474644fb28b767bd79db"
-dependencies = [
- "base64",
- "bs58",
- "serde",
- "serde_json",
- "solana-account 4.3.1",
- "solana-pubkey 4.2.0",
  "zstd",
 ]
 
@@ -3392,7 +3314,7 @@ dependencies = [
  "prost 0.14.4",
  "protobuf-src",
  "serde",
- "solana-account-decoder 4.1.2",
+ "solana-account-decoder",
  "solana-hash",
  "solana-instruction",
  "solana-message",
@@ -3400,17 +3322,12 @@ dependencies = [
  "solana-serde",
  "solana-signature",
  "solana-transaction",
- "solana-transaction-context 4.1.2",
+ "solana-transaction-context",
  "solana-transaction-error",
- "solana-transaction-status 4.1.2",
+ "solana-transaction-status",
  "tonic-prost-build",
  "wincode",
 ]
-
-[[package]]
-name = "solana-svm-feature-set"
-version = "4.1.0"
-source = "git+https://github.com/helius-labs/agave?branch=v4.1.0-helius#d3f1f55c65143b1f9ad0474644fb28b767bd79db"
 
 [[package]]
 name = "solana-svm-feature-set"
@@ -3549,22 +3466,6 @@ dependencies = [
 
 [[package]]
 name = "solana-transaction-context"
-version = "4.1.0"
-source = "git+https://github.com/helius-labs/agave?branch=v4.1.0-helius#d3f1f55c65143b1f9ad0474644fb28b767bd79db"
-dependencies = [
- "bincode",
- "serde",
- "solana-account 4.3.1",
- "solana-instruction",
- "solana-instructions-sysvar",
- "solana-pubkey 4.2.0",
- "solana-rent 4.3.0",
- "solana-sbpf",
- "solana-sdk-ids",
-]
-
-[[package]]
-name = "solana-transaction-context"
 version = "4.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ffd061d881fb2c182078e6ca6094fe113e50edbec224c4f8999747eb643cd02"
@@ -3596,61 +3497,19 @@ dependencies = [
 
 [[package]]
 name = "solana-transaction-status"
-version = "4.1.0"
-source = "git+https://github.com/helius-labs/agave?branch=v4.1.0-helius#d3f1f55c65143b1f9ad0474644fb28b767bd79db"
-dependencies = [
- "Inflector",
- "agave-reserved-account-keys 4.1.0",
- "base64",
- "bincode",
- "borsh",
- "bs58",
- "serde",
- "serde_json",
- "solana-account-decoder 4.1.0",
- "solana-address-lookup-table-interface",
- "solana-clock",
- "solana-hash",
- "solana-instruction",
- "solana-loader-v2-interface",
- "solana-loader-v3-interface",
- "solana-message",
- "solana-program-option",
- "solana-pubkey 4.2.0",
- "solana-reward-info",
- "solana-sdk-ids",
- "solana-signature",
- "solana-stake-interface",
- "solana-system-interface 3.2.0",
- "solana-transaction",
- "solana-transaction-error",
- "solana-transaction-status-client-types 4.1.0",
- "solana-vote-interface",
- "spl-associated-token-account-interface",
- "spl-memo-interface",
- "spl-token-2022-interface 2.1.0",
- "spl-token-group-interface",
- "spl-token-interface",
- "spl-token-metadata-interface 0.8.0",
- "thiserror 2.0.18",
- "wincode",
-]
-
-[[package]]
-name = "solana-transaction-status"
 version = "4.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4704225bedadc396d0f8cfb64022318f552b1ad73b645e7651bfffe736557060"
 dependencies = [
  "Inflector",
- "agave-reserved-account-keys 4.1.2",
+ "agave-reserved-account-keys",
  "base64",
  "bincode",
  "borsh",
  "bs58",
  "serde",
  "serde_json",
- "solana-account-decoder 4.1.2",
+ "solana-account-decoder",
  "solana-address-lookup-table-interface",
  "solana-clock",
  "solana-hash",
@@ -3667,7 +3526,7 @@ dependencies = [
  "solana-system-interface 3.2.0",
  "solana-transaction",
  "solana-transaction-error",
- "solana-transaction-status-client-types 4.1.2",
+ "solana-transaction-status-client-types",
  "solana-vote-interface",
  "spl-associated-token-account-interface",
  "spl-memo-interface",
@@ -3675,29 +3534,6 @@ dependencies = [
  "spl-token-group-interface",
  "spl-token-interface",
  "spl-token-metadata-interface 0.8.0",
- "thiserror 2.0.18",
- "wincode",
-]
-
-[[package]]
-name = "solana-transaction-status-client-types"
-version = "4.1.0"
-source = "git+https://github.com/helius-labs/agave?branch=v4.1.0-helius#d3f1f55c65143b1f9ad0474644fb28b767bd79db"
-dependencies = [
- "base64",
- "bincode",
- "bs58",
- "serde",
- "serde_json",
- "solana-account-decoder-client-types 4.1.0",
- "solana-commitment-config",
- "solana-instruction",
- "solana-message",
- "solana-reward-info",
- "solana-signature",
- "solana-transaction",
- "solana-transaction-context 4.1.0",
- "solana-transaction-error",
  "thiserror 2.0.18",
  "wincode",
 ]
@@ -3713,14 +3549,14 @@ dependencies = [
  "bs58",
  "serde",
  "serde_json",
- "solana-account-decoder-client-types 4.1.2",
+ "solana-account-decoder-client-types",
  "solana-commitment-config",
  "solana-instruction",
  "solana-message",
  "solana-reward-info",
  "solana-signature",
  "solana-transaction",
- "solana-transaction-context 4.1.2",
+ "solana-transaction-context",
  "solana-transaction-error",
  "thiserror 2.0.18",
  "wincode",
@@ -5039,7 +4875,7 @@ dependencies = [
  "solana-hash",
  "solana-pubkey 4.2.0",
  "solana-signature",
- "solana-transaction-status 4.1.2",
+ "solana-transaction-status",
  "tokio",
  "tonic",
  "yellowstone-grpc-client",
@@ -5065,7 +4901,7 @@ dependencies = [
  "siphasher",
  "smallvec",
  "solana-account 4.3.1",
- "solana-account-decoder 4.1.2",
+ "solana-account-decoder",
  "solana-clock",
  "solana-hash",
  "solana-keypair",
@@ -5075,9 +4911,9 @@ dependencies = [
  "solana-signer",
  "solana-storage-proto",
  "solana-transaction",
- "solana-transaction-context 4.1.2",
+ "solana-transaction-context",
  "solana-transaction-error",
- "solana-transaction-status 4.1.2",
+ "solana-transaction-status",
  "spl-token-2022",
  "thiserror 1.0.69",
  "tonic",

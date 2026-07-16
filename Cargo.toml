@@ -20,7 +20,7 @@ publish = false
 
 [workspace.dependencies]
 affinity = "0.1.2"
-agave-geyser-plugin-interface = { git = "https://github.com/helius-labs/agave", branch = "v4.1.0-helius" }
+agave-geyser-plugin-interface = "4.1.2"
 anyhow = "1.0.0"
 backoff = "0.4.0"
 base64 = "0.22.1"
