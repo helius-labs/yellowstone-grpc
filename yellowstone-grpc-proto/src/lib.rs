@@ -55,7 +55,7 @@ pub mod convert_to {
         solana_pubkey::Pubkey,
         solana_signature::Signature,
         solana_transaction::sanitized::SanitizedTransaction,
-        solana_transaction_context::TransactionReturnData,
+        solana_transaction_context::transaction::TransactionReturnData,
         solana_transaction_error::TransactionError,
         solana_transaction_status::{
             InnerInstruction, InnerInstructions, Reward, RewardType, TransactionStatusMeta,
@@ -91,6 +91,16 @@ pub mod convert_to {
                 instructions: create_instructions(&message.instructions),
                 versioned: true,
                 address_table_lookups: create_lookups(&message.address_table_lookups),
+            },
+            // V1 messages (agave 4.1): 4KB transactions with no address lookup
+            // tables; the recent blockhash is carried in `lifetime_specifier`.
+            SanitizedMessage::V1(cached) => proto::Message {
+                header: Some(create_header(&cached.message.header)),
+                account_keys: create_pubkeys(&cached.message.account_keys),
+                recent_blockhash: cached.message.lifetime_specifier.to_bytes().into(),
+                instructions: create_instructions(&cached.message.instructions),
+                versioned: true,
+                address_table_lookups: vec![],
             },
         }
     }
@@ -277,6 +287,9 @@ pub mod convert_to {
             Some(RewardType::Rent) => proto::RewardType::Rent,
             Some(RewardType::Staking) => proto::RewardType::Staking,
             Some(RewardType::Voting) => proto::RewardType::Voting,
+            // Wire enum stops at Voting=4; 4.x-only DeactivatedStake maps to Unspecified
+            // to preserve the frozen serve-side wire contract.
+            Some(RewardType::DeactivatedStake) => proto::RewardType::Unspecified,
         }
     }
 
@@ -315,7 +328,7 @@ pub mod convert_from {
         solana_pubkey::Pubkey,
         solana_signature::Signature,
         solana_transaction::versioned::VersionedTransaction,
-        solana_transaction_context::TransactionReturnData,
+        solana_transaction_context::transaction::TransactionReturnData,
         solana_transaction_error::TransactionError,
         solana_transaction_status::{
             ConfirmedBlock, InnerInstruction, InnerInstructions, Reward, RewardType,
@@ -580,6 +593,8 @@ pub mod convert_from {
                         .map_err(|_| "failed to parse reward commission")?,
                 )
             },
+            // The serve-side wire proto has no commission_bps field; not carried.
+            commission_bps: None,
         })
     }
 
