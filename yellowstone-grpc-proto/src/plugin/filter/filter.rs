@@ -1223,7 +1223,7 @@ mod tests {
                 owner: vec![],
                 filters: vec![],
                 cuckoo_accounts_filter: None,
-                account_state: 0, // ACCOUNT_STATE_LOCKED (default)
+                notify_on: 0, // NOTIFY_ON_LOCK (default)
             },
         );
 
