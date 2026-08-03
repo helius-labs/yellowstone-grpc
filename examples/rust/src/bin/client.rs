@@ -485,7 +485,7 @@ impl Action {
                             filters,
                             nonempty_txn_signature: args.accounts_nonempty_txn_signature,
                             cuckoo_accounts_filter: None,
-                            account_state: 0, // ACCOUNT_STATE_LOCKED (default)
+                            notify_on: 0, // NOTIFY_ON_LOCK (default)
                         },
                     );
                 }
