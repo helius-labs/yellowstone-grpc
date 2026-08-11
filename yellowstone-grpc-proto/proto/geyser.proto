@@ -86,11 +86,10 @@ message SubscribeRequest {
   optional uint64 from_slot = 11;
 }
 
-// Which account updates a subscriber wants delivered. `LOCK` (the default,
-// zero-value) keeps current behavior: every write-locked account. `WRITE`
-// opts into delivery of only accounts a transaction actually mutated, dropping
-// write-locked-but-unchanged ones. Laserstream enforces `WRITE` using its
-// internal is_unmodified ingest signal.
+// DEPRECATED — no-op as of Agave 4.2. Agave 4.2 skips no-op account writes at
+// the validator, making WRITE-only delivery the default and only behavior.
+// Setting `notify_on` has no effect. The field/enum will be removed at a later
+// date.
 enum NotifyOn {
   NOTIFY_ON_LOCK = 0;
   NOTIFY_ON_WRITE = 1;
@@ -102,10 +101,8 @@ message SubscribeRequestFilterAccounts {
   repeated SubscribeRequestFilterAccountsFilter filters = 4;
   optional bool nonempty_txn_signature = 5;
   optional CuckooFilter cuckoo_accounts_filter = 6;
-  // Client opt-in: which write-locked accounts to deliver. Unset / LOCK =
-  // current behavior (all); WRITE = only mutated accounts.
-  // High tag number: this is a Helius-internal extension, kept clear of the
-  // low-numbered range upstream may extend.
+  // DEPRECATED — no-op as of Agave 4.2. Setting this has no effect; write-only
+  // delivery is the default and only behavior. Will be removed at a later date.
   NotifyOn notify_on = 31;
 }
 
