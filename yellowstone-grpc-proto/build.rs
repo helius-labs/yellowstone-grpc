@@ -7,7 +7,16 @@ fn main() -> anyhow::Result<()> {
     std::env::set_var("PROTOC", protobuf_src::protoc());
 
     // build protos
-    tonic_prost_build::configure().compile_protos(&["proto/geyser.proto"], &["proto"])?;
+    tonic_prost_build::configure()
+        .field_attribute(
+            "geyser.SubscribeRequestFilterAccounts.notify_on",
+            "#[deprecated(note = \"No-op as of Agave 4.2: write-only delivery is the default and only behavior. Setting this has no effect; the field will be removed at a later date.\")]",
+        )
+        .enum_attribute(
+            "geyser.NotifyOn",
+            "#[deprecated(note = \"No-op as of Agave 4.2: write-only delivery is the default and only behavior. This enum has no effect; it will be removed at a later date.\")]",
+        )
+        .compile_protos(&["proto/geyser.proto"], &["proto"])?;
 
     // build protos without tonic (wasm)
     let out_dir = env::var("OUT_DIR").expect("OUT_DIR not found");
@@ -17,6 +26,14 @@ fn main() -> anyhow::Result<()> {
         .build_client(false)
         .build_server(false)
         .out_dir(out_dir_path)
+        .field_attribute(
+            "geyser.SubscribeRequestFilterAccounts.notify_on",
+            "#[deprecated(note = \"No-op as of Agave 4.2: write-only delivery is the default and only behavior. Setting this has no effect; the field will be removed at a later date.\")]",
+        )
+        .enum_attribute(
+            "geyser.NotifyOn",
+            "#[deprecated(note = \"No-op as of Agave 4.2: write-only delivery is the default and only behavior. This enum has no effect; it will be removed at a later date.\")]",
+        )
         .compile_protos(&["proto/geyser.proto"], &["proto"])?;
 
     // build with accepting our custom struct
