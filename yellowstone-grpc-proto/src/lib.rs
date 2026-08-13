@@ -88,6 +88,7 @@ pub mod convert_to {
                 instructions: create_instructions(&message.instructions),
                 versioned: false,
                 address_table_lookups: vec![],
+                config: None,
             },
             SanitizedMessage::V0(LoadedMessage { message, .. }) => proto::Message {
                 header: Some(create_header(&message.header)),
@@ -96,6 +97,7 @@ pub mod convert_to {
                 instructions: create_instructions(&message.instructions),
                 versioned: true,
                 address_table_lookups: create_lookups(&message.address_table_lookups),
+                config: None,
             },
             // V1 messages (agave 4.1): 4KB transactions with no address lookup
             // tables; the recent blockhash is carried in `lifetime_specifier`.
@@ -106,6 +108,15 @@ pub mod convert_to {
                 instructions: create_instructions(&cached.message.instructions),
                 versioned: true,
                 address_table_lookups: vec![],
+                config: Some(proto::TransactionConfig {
+                    priority_fee: cached.message.config.priority_fee,
+                    compute_unit_limit: cached.message.config.compute_unit_limit,
+                    loaded_accounts_data_size_limit: cached
+                        .message
+                        .config
+                        .loaded_accounts_data_size_limit,
+                    heap_size: cached.message.config.heap_size,
+                }),
             },
         }
     }
@@ -282,6 +293,10 @@ pub mod convert_to {
             post_balance: reward.post_balance,
             reward_type: create_reward_type(reward.reward_type) as i32,
             commission: reward.commission.map(|c| c.to_string()).unwrap_or_default(),
+            commission_bps: reward
+                .commission_bps
+                .map(|c| c.to_string())
+                .unwrap_or_default(),
         }
     }
 
@@ -328,6 +343,7 @@ pub mod convert_from {
         solana_message::{
             compiled_instruction::CompiledInstruction,
             v0::{LoadedAddresses, Message as MessageV0, MessageAddressTableLookup},
+            v1::{Message as MessageV1, TransactionConfig},
             Message, MessageHeader, VersionedMessage,
         },
         solana_pubkey::Pubkey,
@@ -426,8 +442,28 @@ pub mod convert_from {
                 .map_err(|_| "failed to parse num_readonly_unsigned_accounts")?,
         };
 
-        if message.recent_blockhash.len() != HASH_BYTES {
+        let Ok(blockhash) = <[u8; HASH_BYTES]>::try_from(message.recent_blockhash.as_slice())
+        else {
             return Err("failed to parse hash");
+        };
+        let recent_blockhash = Hash::new_from_array(blockhash);
+
+        // `config` is set only for V1 messages, whose lifetime specifier is carried in
+        // `recent_blockhash` and which have no address table lookups. `versioned` is
+        // true for both V0 and V1, so it cannot tell them apart on its own.
+        if let Some(config) = message.config {
+            return Ok(VersionedMessage::V1(MessageV1 {
+                header,
+                config: TransactionConfig {
+                    priority_fee: config.priority_fee,
+                    compute_unit_limit: config.compute_unit_limit,
+                    loaded_accounts_data_size_limit: config.loaded_accounts_data_size_limit,
+                    heap_size: config.heap_size,
+                },
+                lifetime_specifier: recent_blockhash,
+                account_keys: create_pubkey_vec(message.account_keys)?,
+                instructions: create_message_instructions(message.instructions)?,
+            }));
         }
 
         Ok(if message.versioned {
@@ -444,9 +480,7 @@ pub mod convert_from {
             VersionedMessage::V0(MessageV0 {
                 header,
                 account_keys: create_pubkey_vec(message.account_keys)?,
-                recent_blockhash: Hash::new_from_array(
-                    <[u8; HASH_BYTES]>::try_from(message.recent_blockhash.as_slice()).unwrap(),
-                ),
+                recent_blockhash,
                 instructions: create_message_instructions(message.instructions)?,
                 address_table_lookups,
             })
@@ -454,9 +488,7 @@ pub mod convert_from {
             VersionedMessage::Legacy(Message {
                 header,
                 account_keys: create_pubkey_vec(message.account_keys)?,
-                recent_blockhash: Hash::new_from_array(
-                    <[u8; HASH_BYTES]>::try_from(message.recent_blockhash.as_slice()).unwrap(),
-                ),
+                recent_blockhash,
                 instructions: create_message_instructions(message.instructions)?,
             })
         })
@@ -598,8 +630,16 @@ pub mod convert_from {
                         .map_err(|_| "failed to parse reward commission")?,
                 )
             },
-            // The serve-side wire proto has no commission_bps field; not carried.
-            commission_bps: None,
+            commission_bps: if reward.commission_bps.is_empty() {
+                None
+            } else {
+                Some(
+                    reward
+                        .commission_bps
+                        .parse()
+                        .map_err(|_| "failed to parse reward commission_bps")?,
+                )
+            },
         })
     }
 
