@@ -13,6 +13,7 @@ publish = true
 [dependencies]
 bytes = { workspace = true }
 futures = { workspace = true }
+h2 = { workspace = true }
 thiserror = { workspace = true }
 tonic = { workspace = true, features = ["tls-native-roots"] }
 tonic-health = { workspace = true }
