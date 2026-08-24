@@ -1,6 +1,6 @@
 # Publishing the h2 security update
 
-This branch adds an `h2 >=0.4.17,<0.5` dependency floor to the Rust client and the proto crate's Tonic feature. Version 0.4.16 is not used because it has a regression.
+This branch adds an `h2 >=0.4.19,<0.5` dependency floor to the Rust client and the proto crate's Tonic feature. Versions 0.4.16–0.4.18 are not used: the small-DATA-frame budget they introduced false-positives on legitimate paced small-message streams. 0.4.19 sizes that budget from the connection window, clearing the false positive while keeping RUSTSEC-2026-0258 closed.
 
 ## Versions
 
@@ -21,7 +21,7 @@ The in-tree packages remain named `yellowstone-grpc-proto` and `yellowstone-grpc
 4. Package and inspect `laserstream-core-proto` before publishing it.
 5. Rename the client package to `laserstream-core-client` and set its version to 11.1.1.
 6. Preserve the dependency alias as `yellowstone-grpc-proto = { package = "laserstream-core-proto", version = "11.2.1", default-features = false, features = ["tonic", "tonic-compression"] }`.
-7. Keep the direct `h2 >=0.4.17,<0.5` dependency.
+7. Keep the direct `h2 >=0.4.19,<0.5` dependency.
 8. Package and inspect `laserstream-core-client` before publishing it.
 
 Publishing is not part of this security PR and requires separate authorization from a crates.io owner.
