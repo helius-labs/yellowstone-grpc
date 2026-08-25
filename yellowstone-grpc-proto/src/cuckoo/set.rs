@@ -133,8 +133,6 @@ impl CompressedAccountFilterSet {
             filters: vec![],
             nonempty_txn_signature: None,
             cuckoo_accounts_filter: Some(self.to_proto()),
-            #[allow(deprecated)] // notify_on is a deprecated no-op (Agave 4.2); default value only
-            notify_on: 0,
         }
     }
 
