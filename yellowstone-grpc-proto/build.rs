@@ -7,8 +7,7 @@ fn main() -> anyhow::Result<()> {
     std::env::set_var("PROTOC", protobuf_src::protoc());
 
     // build protos
-    tonic_prost_build::configure()
-        .compile_protos(&["proto/geyser.proto"], &["proto"])?;
+    tonic_prost_build::configure().compile_protos(&["proto/geyser.proto"], &["proto"])?;
 
     // build protos without tonic (wasm)
     let out_dir = env::var("OUT_DIR").expect("OUT_DIR not found");
