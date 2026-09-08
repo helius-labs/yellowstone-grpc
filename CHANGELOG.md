@@ -12,6 +12,8 @@ The minor version will be incremented upon a breaking change and the patch versi
 
 ### Fixes
 
+- proto: `convert_from::create_reward` decodes unknown `reward_type` values as `None` instead of failing the whole conversion
+
 ### Features
 
 ### Breaking
