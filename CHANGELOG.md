@@ -10,6 +10,10 @@ The minor version will be incremented upon a breaking change and the patch versi
 
 ## [Unreleased]
 
+### Fixes
+
+- plugin: `convert_from::create_reward` decodes unknown `reward_type` values as `None` instead of failing the whole conversion
+
 ## 2026-08-31
 
 - yellowstone-grpc-geyser 15.2.1
