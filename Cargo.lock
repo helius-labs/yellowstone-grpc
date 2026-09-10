@@ -1557,6 +1557,59 @@ dependencies = [
 ]
 
 [[package]]
+name = "laserstream-core-client"
+version = "12.0.0"
+dependencies = [
+ "bytes",
+ "futures",
+ "laserstream-core-proto",
+ "thiserror 1.0.69",
+ "tokio",
+ "tonic",
+ "tonic-health",
+]
+
+[[package]]
+name = "laserstream-core-proto"
+version = "12.0.0"
+dependencies = [
+ "agave-geyser-plugin-interface",
+ "anyhow",
+ "base64",
+ "bincode",
+ "bs58",
+ "bytes",
+ "criterion",
+ "prost 0.11.9",
+ "prost 0.14.4",
+ "prost-types",
+ "protobuf-src",
+ "serde",
+ "siphasher",
+ "smallvec",
+ "solana-account 4.3.1",
+ "solana-account-decoder",
+ "solana-clock",
+ "solana-hash",
+ "solana-keypair",
+ "solana-message",
+ "solana-pubkey 4.2.0",
+ "solana-signature",
+ "solana-signer",
+ "solana-storage-proto",
+ "solana-transaction",
+ "solana-transaction-context",
+ "solana-transaction-error",
+ "solana-transaction-status",
+ "spl-token-2022",
+ "thiserror 1.0.69",
+ "tonic",
+ "tonic-build",
+ "tonic-prost",
+ "tonic-prost-build",
+]
+
+[[package]]
 name = "lazy_static"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4843,19 +4896,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
 
 [[package]]
-name = "yellowstone-grpc-client"
-version = "9.0.1"
-dependencies = [
- "bytes",
- "futures",
- "thiserror 1.0.69",
- "tokio",
- "tonic",
- "tonic-health",
- "yellowstone-grpc-proto",
-]
-
-[[package]]
 name = "yellowstone-grpc-client-simple"
 version = "9.0.0"
 dependencies = [
@@ -4869,6 +4909,8 @@ dependencies = [
  "futures",
  "hex",
  "indicatif",
+ "laserstream-core-client",
+ "laserstream-core-proto",
  "log",
  "maplit",
  "serde_json",
@@ -4878,48 +4920,6 @@ dependencies = [
  "solana-transaction-status",
  "tokio",
  "tonic",
- "yellowstone-grpc-client",
- "yellowstone-grpc-proto",
-]
-
-[[package]]
-name = "yellowstone-grpc-proto"
-version = "9.0.1"
-dependencies = [
- "agave-geyser-plugin-interface",
- "anyhow",
- "base64",
- "bincode",
- "bs58",
- "bytes",
- "criterion",
- "prost 0.11.9",
- "prost 0.14.4",
- "prost-types",
- "protobuf-src",
- "serde",
- "siphasher",
- "smallvec",
- "solana-account 4.3.1",
- "solana-account-decoder",
- "solana-clock",
- "solana-hash",
- "solana-keypair",
- "solana-message",
- "solana-pubkey 4.2.0",
- "solana-signature",
- "solana-signer",
- "solana-storage-proto",
- "solana-transaction",
- "solana-transaction-context",
- "solana-transaction-error",
- "solana-transaction-status",
- "spl-token-2022",
- "thiserror 1.0.69",
- "tonic",
- "tonic-build",
- "tonic-prost",
- "tonic-prost-build",
 ]
 
 [[package]]
