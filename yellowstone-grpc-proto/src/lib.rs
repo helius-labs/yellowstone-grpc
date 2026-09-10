@@ -3,11 +3,6 @@
 pub mod geyser {
     #![allow(clippy::clone_on_ref_ptr)]
     #![allow(clippy::missing_const_for_fn)]
-    // The generated NotifyOn enum + notify_on field are marked #[deprecated]
-    // (no-op as of Agave 4.2). prost-generated code references them internally
-    // (as_str_name/from_str_name), which would trip -D warnings. Allow here so
-    // the crate builds clean; the deprecation still fires for downstream users.
-    #![allow(deprecated)]
 
     #[cfg(feature = "tonic")]
     include!(concat!(env!("OUT_DIR"), "/geyser.rs"));
