@@ -1,3 +1,5 @@
+use crate::prelude::SubscribeUpdateBatch;
+use prost::Message as ProstMessage;
 use {
     crate::{
         geyser::{
@@ -34,8 +36,6 @@ use {
         time::SystemTime,
     },
 };
-use crate::prelude::SubscribeUpdateBatch;
-use prost::Message as ProstMessage;
 
 #[inline]
 pub const fn prost_field_encoded_len(tag: u32, len: usize) -> usize {
@@ -187,6 +187,7 @@ impl FilteredUpdate {
             data: data_slice.get_slice(&message.data),
             write_version: message.write_version,
             txn_signature: message.txn_signature.map(|s| s.as_ref().into()),
+            transaction_index: message.transaction_index,
         }
     }
 
@@ -554,6 +555,9 @@ impl FilteredUpdateAccount {
         if let Some(value) = &account.txn_signature {
             prost_bytes_encode_raw(8u32, value.as_ref(), buf);
         }
+        if let Some(value) = &account.transaction_index {
+            ::prost::encoding::uint64::encode(9u32, value, buf);
+        }
     }
 
     fn account_encoded_len(
@@ -592,6 +596,9 @@ impl FilteredUpdateAccount {
             + account
                 .txn_signature
                 .map_or(0, |sig| prost_bytes_encoded_len(8u32, sig.as_ref()))
+            + account.transaction_index.map_or(0, |value| {
+                ::prost::encoding::uint64::encoded_len(9u32, &value)
+            })
     }
 }
 
@@ -1107,6 +1114,7 @@ pub mod tests {
                                     data: data.clone(),
                                     write_version,
                                     txn_signature,
+                                    transaction_index: None,
                                 }));
                             }
                         }
