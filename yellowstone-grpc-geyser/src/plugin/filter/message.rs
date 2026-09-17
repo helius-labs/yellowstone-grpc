@@ -148,6 +148,7 @@ impl FilteredUpdate {
             data: Bytes::from(data_slice),
             write_version: acc.write_version,
             txn_signature: acc.txn_signature.map(|s| s.as_ref().into()),
+            transaction_index: acc.transaction_index,
         }
     }
 
@@ -488,6 +489,9 @@ impl FilteredUpdateAccount {
         if let Some(value) = &account.txn_signature {
             prost_bytes_encode_raw(8u32, value.as_ref(), buf);
         }
+        if let Some(value) = &account.transaction_index {
+            ::prost::encoding::uint64::encode(9u32, value, buf);
+        }
     }
 
     fn account_encoded_len(
@@ -539,6 +543,9 @@ impl FilteredUpdateAccount {
             + account
                 .txn_signature
                 .map_or(0, |_| SIGNATURE_FIELD_ENCODED_LEN)
+            + account.transaction_index.map_or(0, |value| {
+                ::prost::encoding::uint64::encoded_len(9u32, &value)
+            })
     }
 }
 
@@ -1361,6 +1368,7 @@ pub mod tests {
                                     data: Bytes::from(data.clone()),
                                     write_version,
                                     txn_signature,
+                                    transaction_index: None,
                                     pre_encoded: OnceLock::new(),
                                 });
                             }
@@ -1572,6 +1580,52 @@ pub mod tests {
     }
 
     #[test]
+    fn account_transaction_index_manual_encoder_parity() {
+        use yellowstone_grpc_proto::prelude::SubscribeUpdateAccountInfo;
+        for transaction_index in [None, Some(0), Some(42), Some(u64::MAX)] {
+            for data_slice in create_account_data_slice() {
+                let mut account = crate::plugin::filter::fixtures::account_info(
+                    Pubkey::new_unique(),
+                    Pubkey::new_unique(),
+                    vec![42; 16],
+                    7,
+                    None,
+                );
+                account.transaction_index = transaction_index;
+                let message = crate::plugin::filter::fixtures::message_account(account.clone());
+                let expected = FilteredUpdate::as_subscribe_update_account(&message, &data_slice);
+                assert_eq!(expected.transaction_index, transaction_index);
+                let mut expected_bytes = Vec::new();
+                prost::encoding::message::encode(1, &expected, &mut expected_bytes);
+                // A nonempty slice forces the real fallback encoder, even with a cache.
+                for cached in [false, true] {
+                    if cached {
+                        AccountEncoder::pre_encode(&account);
+                    }
+                    let mut actual = Vec::new();
+                    FilteredUpdateAccount::account_encode_raw(
+                        1,
+                        &account,
+                        &data_slice,
+                        &mut actual,
+                    );
+                    assert_eq!(actual, expected_bytes);
+                    assert_eq!(
+                        FilteredUpdateAccount::account_encoded_len(&account, &data_slice),
+                        expected.encoded_len()
+                    );
+                    assert_eq!(
+                        SubscribeUpdateAccountInfo::decode(expected.encode_to_vec().as_slice())
+                            .unwrap()
+                            .transaction_index,
+                        transaction_index
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
     fn test_account_pre_encoded_matches_manual_encoding() {
         use {bytes::Bytes, solana_pubkey::Pubkey, solana_signature::Signature};
 
@@ -1602,6 +1656,7 @@ pub mod tests {
                                             data: Bytes::from(data.clone()),
                                             write_version,
                                             txn_signature,
+                                            transaction_index: None,
                                             pre_encoded: OnceLock::new(),
                                         };
                                         AccountEncoder::pre_encode(&account_with);
@@ -1616,6 +1671,7 @@ pub mod tests {
                                             data: Bytes::from(data.clone()),
                                             write_version,
                                             txn_signature,
+                                            transaction_index: None,
                                             pre_encoded: OnceLock::new(),
                                         };
 

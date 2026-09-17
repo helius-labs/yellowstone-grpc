@@ -2609,6 +2609,7 @@ mod tests {
                 data: Bytes::new(),
                 write_version: 1,
                 txn_signature: None,
+                transaction_index: None,
                 pre_encoded: std::sync::OnceLock::new(),
             },
             slot: 100,
@@ -3639,6 +3640,7 @@ mod account_filter_regression_tests {
             data: Bytes::from(data),
             write_version: 7,
             txn_signature: has_signature.then(Signature::default),
+            transaction_index: None,
             pre_encoded: OnceLock::new(),
         }
     }

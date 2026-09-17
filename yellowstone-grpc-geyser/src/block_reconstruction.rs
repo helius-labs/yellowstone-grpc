@@ -588,6 +588,7 @@ mod tests {
                 data: Bytes::new(),
                 write_version,
                 txn_signature: None,
+                transaction_index: None,
                 pre_encoded: OnceLock::new(),
             },
             slot,

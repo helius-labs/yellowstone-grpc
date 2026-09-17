@@ -189,6 +189,7 @@ pub struct MessageAccountInfo {
     pub data: Bytes,
     pub write_version: u64,
     pub txn_signature: Option<Signature>,
+    pub transaction_index: Option<u64>,
     pub pre_encoded: OnceLock<Vec<u8>>,
 }
 
@@ -205,6 +206,8 @@ impl MessageAccountInfo {
             data,
             write_version: info.write_version,
             txn_signature: info.txn.map(|txn| *txn.signature()),
+            // V3 does not provide authoritative transaction-index metadata.
+            transaction_index: None,
             pre_encoded: OnceLock::new(),
         }
     }
