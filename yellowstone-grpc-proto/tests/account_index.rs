@@ -14,7 +14,7 @@ use laserstream_core_proto::{
 use std::sync::Arc;
 
 #[test]
-fn native_v3_write_defaults_to_native_operation_zero() {
+fn native_v3_write_has_no_transaction() {
     let info = agave_geyser_plugin_interface::geyser_plugin_interface::ReplicaAccountInfoV3 {
         pubkey: &[1; 32],
         lamports: 1,
@@ -27,29 +27,19 @@ fn native_v3_write_defaults_to_native_operation_zero() {
     };
     let account = MessageAccountInfo::from_geyser(&info);
     assert_eq!(
-        laserstream_core_proto::AccountIndex::from_wire(
-            account.transaction_index,
-            account.native_operation_count
-        ),
-        laserstream_core_proto::AccountIndex::NativeOperation(0)
+        laserstream_core_proto::AccountIndex::from_wire(account.transaction_index),
+        laserstream_core_proto::AccountIndex::NoTransaction
     );
 }
 
 #[test]
 fn account_index_manual_encoder_parity() {
-    for (transaction_index, native_operation_count) in [
-        (0, 0),
-        (42, 9),
-        (u64::MAX, 0),
-        (u64::MAX, 7),
-        (u64::MAX, u64::MAX),
-        (u64::MAX - 1, 0),
-    ] {
+    for transaction_index in [0, 42, u64::MAX, u64::MAX - 1] {
         let account = MessageAccountInfo::from_update_oneof(SubscribeUpdateAccountInfo {
             pubkey: vec![1; 32],
             owner: vec![2; 32],
             transaction_index,
-            native_operation_count,
+
             ..Default::default()
         })
         .unwrap();
@@ -72,6 +62,5 @@ fn account_index_manual_encoder_parity() {
         };
         let account = update.account.unwrap();
         assert_eq!(account.transaction_index, transaction_index);
-        assert_eq!(account.native_operation_count, native_operation_count);
     }
 }

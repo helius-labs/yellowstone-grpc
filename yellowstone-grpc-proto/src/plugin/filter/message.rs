@@ -188,7 +188,6 @@ impl FilteredUpdate {
             write_version: message.write_version,
             txn_signature: message.txn_signature.map(|s| s.as_ref().into()),
             transaction_index: message.transaction_index,
-            native_operation_count: message.native_operation_count,
         }
     }
 
@@ -559,9 +558,6 @@ impl FilteredUpdateAccount {
         if account.transaction_index != 0 {
             ::prost::encoding::uint64::encode(32u32, &account.transaction_index, buf);
         }
-        if account.native_operation_count != 0 {
-            ::prost::encoding::uint64::encode(33u32, &account.native_operation_count, buf);
-        }
     }
 
     fn account_encoded_len(
@@ -602,11 +598,6 @@ impl FilteredUpdateAccount {
                 .map_or(0, |sig| prost_bytes_encoded_len(8u32, sig.as_ref()))
             + if account.transaction_index != 0 {
                 ::prost::encoding::uint64::encoded_len(32u32, &account.transaction_index)
-            } else {
-                0
-            }
-            + if account.native_operation_count != 0 {
-                ::prost::encoding::uint64::encoded_len(33u32, &account.native_operation_count)
             } else {
                 0
             }
@@ -1126,7 +1117,6 @@ pub mod tests {
                                     write_version,
                                     txn_signature,
                                     transaction_index: 0,
-                                    native_operation_count: 0,
                                 }));
                             }
                         }
