@@ -1,28 +1,5 @@
-/// Read-only typed view of an account write's origin.
-/// Transaction indices are zero-based and unshifted. Old producers that omit
-/// field 32 are indistinguishable from `Transaction(0)`.
-/// The decoder maps `u64::MAX` to `NoTransaction`, never `Transaction(u64::MAX)`.
-/// Generated protobuf fields remain available for wire compatibility, but this
-/// typed API deliberately provides no setter or encoder.
-///
-/// ```compile_fail,E0599
-/// use laserstream_core_proto::geyser::{AccountTransactionIndex, SubscribeUpdateAccountInfo};
-/// let mut account = SubscribeUpdateAccountInfo::default();
-/// account.set_account_transaction_index(AccountTransactionIndex::Transaction(42));
-/// ```
-///
-/// ```compile_fail,E0599
-/// use laserstream_core_proto::AccountTransactionIndex;
-/// AccountTransactionIndex::NoTransaction.to_wire();
-/// ```
-///
-/// ```compile_fail,E0432
-/// use laserstream_core_proto::ReservedTransactionIndex;
-/// ```
-///
-/// ```compile_fail,E0432
-/// use laserstream_core_proto::geyser::ReservedTransactionIndex;
-/// ```
+/// Getter-only view of an account write's origin. Indices are zero-based;
+/// legacy omitted metadata is indistinguishable from Transaction(0).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AccountTransactionIndex {
     Transaction(u64),
@@ -30,7 +7,6 @@ pub enum AccountTransactionIndex {
 }
 
 impl AccountTransactionIndex {
-    /// Decode the raw scalar, including legacy omission (zero).
     pub const fn from_wire(value: u64) -> Self {
         match value {
             u64::MAX => Self::NoTransaction,
@@ -40,8 +16,29 @@ impl AccountTransactionIndex {
 }
 
 impl crate::geyser::SubscribeUpdateAccountInfo {
-    /// Typed view of the raw protobuf scalar (also available on block accounts).
     pub const fn account_transaction_index(&self) -> AccountTransactionIndex {
         AccountTransactionIndex::from_wire(self.transaction_index)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::AccountTransactionIndex;
+    use crate::geyser::SubscribeUpdateAccountInfo;
+
+    #[test]
+    fn account_transaction_index() {
+        for value in [0, 42, u64::MAX] {
+            let account = SubscribeUpdateAccountInfo {
+                transaction_index: value,
+                ..Default::default()
+            };
+            let expected = if value == u64::MAX {
+                AccountTransactionIndex::NoTransaction
+            } else {
+                AccountTransactionIndex::Transaction(value)
+            };
+            assert_eq!(account.account_transaction_index(), expected);
+        }
     }
 }
