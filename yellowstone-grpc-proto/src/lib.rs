@@ -3,7 +3,7 @@
 pub mod geyser {
     #![allow(clippy::clone_on_ref_ptr)]
     #![allow(clippy::missing_const_for_fn)]
-    pub use crate::account_transaction_index::{AccountTransactionIndex, ReservedTransactionIndex};
+    pub use crate::account_transaction_index::AccountTransactionIndex;
 
     #[cfg(feature = "tonic")]
     include!(concat!(env!("OUT_DIR"), "/geyser.rs"));
@@ -31,7 +31,7 @@ pub mod solana {
 }
 
 mod account_transaction_index;
-pub use account_transaction_index::{AccountTransactionIndex, ReservedTransactionIndex};
+pub use account_transaction_index::AccountTransactionIndex;
 pub mod cuckoo;
 
 pub mod prelude {
