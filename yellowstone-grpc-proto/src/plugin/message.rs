@@ -194,6 +194,7 @@ pub struct MessageAccountInfo {
     pub write_version: u64,
     pub txn_signature: Option<Signature>,
     pub transaction_index: u64,
+    pub native_operation_count: u64,
 }
 
 impl MessageAccountInfo {
@@ -210,6 +211,8 @@ impl MessageAccountInfo {
             // V3 has no transaction index. Retain the accepted legacy zero
             // ambiguity for transaction-backed updates; native writes are named.
             transaction_index: if info.txn.is_some() { 0 } else { u64::MAX },
+            // V3 does not carry a native operation count.
+            native_operation_count: 0,
         }
     }
 
@@ -223,6 +226,7 @@ impl MessageAccountInfo {
             data: msg.data,
             write_version: msg.write_version,
             transaction_index: msg.transaction_index,
+            native_operation_count: msg.native_operation_count,
             txn_signature: msg
                 .txn_signature
                 .map(|sig| {
