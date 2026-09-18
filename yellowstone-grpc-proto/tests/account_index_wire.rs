@@ -62,6 +62,18 @@ fn scalar32_independent_wire_and_legacy_schema() {
     }
 }
 
+#[test]
+fn serialization_maps_stored_values_without_validation() {
+    const RAW_RESERVED: u64 = AccountTransactionIndex::Transaction(u64::MAX).to_wire();
+    assert_eq!(RAW_RESERVED, u64::MAX);
+    for value in [0, 42, u64::MAX - 1, u64::MAX] {
+        let index = AccountTransactionIndex::from_wire(value);
+        let wire: u64 = index.to_wire();
+        assert_eq!(wire, value);
+        assert_ne!(index, AccountTransactionIndex::Transaction(u64::MAX));
+    }
+}
+
 // The pre-feature account schema: all original fields with their original tags.
 #[derive(Clone, PartialEq, Message)]
 struct LegacyAccount {
