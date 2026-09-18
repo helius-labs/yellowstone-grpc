@@ -78,7 +78,7 @@ jobs:
         env:
           CARGO_BUILD_JOBS: 4
         run: |
-          cargo test --locked -p laserstream-core-proto --no-default-features --lib account_transaction_index
+          cargo test --locked -p laserstream-core-proto --no-default-features --lib account_index::tests::account_index -- --exact
           cargo test --locked -p laserstream-core-proto --features plugin --test account_index
 
       - name: cargo tree
