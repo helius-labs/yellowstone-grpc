@@ -74,6 +74,13 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libsasl2-dev protobuf-compiler
 
+      - name: Account-index wire and encoder regression
+        env:
+          CARGO_BUILD_JOBS: 4
+        run: |
+          cargo test --locked -p laserstream-core-proto --no-default-features --test account_index_wire
+          cargo test --locked -p laserstream-core-proto --features plugin --test account_index --test account_index_wire
+
       - name: cargo tree
         run: |
           cargo tree

@@ -14,8 +14,27 @@ use laserstream_core_proto::{
 use std::{ops::Range, sync::Arc};
 
 #[test]
+fn native_v3_write_has_no_transaction() {
+    let info = agave_geyser_plugin_interface::geyser_plugin_interface::ReplicaAccountInfoV3 {
+        pubkey: &[1; 32],
+        lamports: 1,
+        owner: &[2; 32],
+        executable: false,
+        rent_epoch: 0,
+        data: &[],
+        write_version: 1,
+        txn: None,
+    };
+    let account = MessageAccountInfo::from_geyser(&info);
+    assert_eq!(
+        laserstream_core_proto::AccountTransactionIndex::from_wire(account.transaction_index),
+        laserstream_core_proto::AccountTransactionIndex::NoTransaction
+    );
+}
+
+#[test]
 fn account_transaction_index_manual_encoder_parity() {
-    for transaction_index in [None, Some(0), Some(42), Some(u64::MAX)] {
+    for transaction_index in [0, 42, u64::MAX, u64::MAX - 1] {
         for ranges in [vec![], vec![Range { start: 2, end: 5 }]] {
             let account = MessageAccountInfo::from_update_oneof(SubscribeUpdateAccountInfo {
                 pubkey: vec![1; 32],

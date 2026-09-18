@@ -555,8 +555,8 @@ impl FilteredUpdateAccount {
         if let Some(value) = &account.txn_signature {
             prost_bytes_encode_raw(8u32, value.as_ref(), buf);
         }
-        if let Some(value) = &account.transaction_index {
-            ::prost::encoding::uint64::encode(9u32, value, buf);
+        if account.transaction_index != 0 {
+            ::prost::encoding::uint64::encode(32u32, &account.transaction_index, buf);
         }
     }
 
@@ -596,9 +596,11 @@ impl FilteredUpdateAccount {
             + account
                 .txn_signature
                 .map_or(0, |sig| prost_bytes_encoded_len(8u32, sig.as_ref()))
-            + account.transaction_index.map_or(0, |value| {
-                ::prost::encoding::uint64::encoded_len(9u32, &value)
-            })
+            + if account.transaction_index != 0 {
+                ::prost::encoding::uint64::encoded_len(32u32, &account.transaction_index)
+            } else {
+                0
+            }
     }
 }
 
@@ -1114,7 +1116,7 @@ pub mod tests {
                                     data: data.clone(),
                                     write_version,
                                     txn_signature,
-                                    transaction_index: None,
+                                    transaction_index: 0,
                                 }));
                             }
                         }
