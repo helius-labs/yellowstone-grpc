@@ -3,6 +3,7 @@
 pub mod geyser {
     #![allow(clippy::clone_on_ref_ptr)]
     #![allow(clippy::missing_const_for_fn)]
+    pub use crate::account_index::AccountIndex;
 
     #[cfg(feature = "tonic")]
     include!(concat!(env!("OUT_DIR"), "/geyser.rs"));
@@ -29,6 +30,8 @@ pub mod solana {
     }
 }
 
+mod account_index;
+pub use account_index::AccountIndex;
 pub mod cuckoo;
 
 pub mod prelude {

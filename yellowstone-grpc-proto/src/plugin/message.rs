@@ -193,6 +193,7 @@ pub struct MessageAccountInfo {
     pub data: Vec<u8>,
     pub write_version: u64,
     pub txn_signature: Option<Signature>,
+    pub transaction_index: u64,
 }
 
 impl MessageAccountInfo {
@@ -206,6 +207,9 @@ impl MessageAccountInfo {
             data: info.data.into(),
             write_version: info.write_version,
             txn_signature: info.txn.map(|txn| *txn.signature()),
+            // V3 has no transaction index. Retain the accepted legacy zero
+            // ambiguity for transaction-backed updates; native writes are named.
+            transaction_index: if info.txn.is_some() { 0 } else { u64::MAX },
         }
     }
 
@@ -218,6 +222,7 @@ impl MessageAccountInfo {
             rent_epoch: msg.rent_epoch,
             data: msg.data,
             write_version: msg.write_version,
+            transaction_index: msg.transaction_index,
             txn_signature: msg
                 .txn_signature
                 .map(|sig| {
