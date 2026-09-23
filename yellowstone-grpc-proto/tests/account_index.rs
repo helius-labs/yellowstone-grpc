@@ -44,6 +44,7 @@ fn account_index_manual_encoder_parity() {
         })
         .unwrap();
         let message = MessageAccount {
+            bank_id: None,
             account: Arc::new(account),
             slot: 42,
             is_startup: false,

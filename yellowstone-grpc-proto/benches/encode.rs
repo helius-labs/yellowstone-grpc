@@ -52,6 +52,7 @@ fn bench_account(c: &mut Criterion) {
         .map(|transaction| FilteredUpdate {
             filters: filters.clone(),
             message: FilteredUpdateOneof::transaction(&MessageTransaction {
+                bank_id: 0,
                 transaction,
                 slot: 42,
                 created_at: Timestamp::from(SystemTime::now()),

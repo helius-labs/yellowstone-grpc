@@ -206,6 +206,7 @@ impl FilteredUpdate {
     fn as_subscribe_update_entry(message: &MessageEntry) -> SubscribeUpdateEntry {
         SubscribeUpdateEntry {
             slot: message.slot,
+            bank_id: message.bank_id,
             index: message.index as u64,
             num_hashes: message.num_hashes,
             hash: message.hash.to_bytes().to_vec(),
@@ -222,10 +223,12 @@ impl FilteredUpdate {
                     &msg.data_slice,
                 )),
                 slot: msg.slot,
+                bank_id: msg.bank_id,
                 is_startup: msg.is_startup,
             }),
             FilteredUpdateOneof::Slot(msg) => UpdateOneof::Slot(SubscribeUpdateSlot {
                 slot: msg.slot,
+                bank_id: msg.bank_id,
                 parent: msg.parent,
                 status: msg.status as i32,
                 dead_error: msg.dead_error.clone(),
@@ -236,11 +239,13 @@ impl FilteredUpdate {
                         msg.transaction.as_ref(),
                     )),
                     slot: msg.slot,
+                    bank_id: msg.bank_id,
                 })
             }
             FilteredUpdateOneof::TransactionStatus(msg) => {
                 UpdateOneof::TransactionStatus(SubscribeUpdateTransactionStatus {
                     slot: msg.slot,
+                    bank_id: msg.bank_id,
                     signature: msg.transaction.signature.as_ref().into(),
                     is_vote: msg.transaction.is_vote,
                     index: msg.transaction.index as u64,
@@ -249,6 +254,7 @@ impl FilteredUpdate {
             }
             FilteredUpdateOneof::Block(msg) => UpdateOneof::Block(SubscribeUpdateBlock {
                 slot: msg.meta.slot,
+                bank_id: msg.meta.bank_id,
                 blockhash: msg.meta.blockhash.clone(),
                 rewards: msg.meta.rewards.clone(),
                 block_time: msg.meta.block_time,
@@ -304,6 +310,7 @@ impl FilteredUpdate {
                 FilteredUpdateOneof::Account(FilteredUpdateAccount {
                     account: account.account,
                     slot: account.slot,
+                    bank_id: account.bank_id,
                     is_startup: account.is_startup,
                     data_slice: FilterAccountsDataSlice::default(),
                 })
@@ -317,6 +324,7 @@ impl FilteredUpdate {
                 FilteredUpdateOneof::Transaction(FilteredUpdateTransaction {
                     transaction: tx.transaction,
                     slot: tx.slot,
+                    bank_id: tx.bank_id,
                 })
             }
             UpdateOneof::TransactionStatus(msg) => {
@@ -334,6 +342,7 @@ impl FilteredUpdate {
                         account_keys: HashSet::new(),
                     }),
                     slot: msg.slot,
+                    bank_id: msg.bank_id,
                 })
             }
             UpdateOneof::Block(msg) => {
@@ -386,6 +395,7 @@ impl FilteredUpdateOneof {
     pub fn account(message: &MessageAccount, data_slice: FilterAccountsDataSlice) -> Self {
         Self::Account(FilteredUpdateAccount {
             slot: message.slot,
+            bank_id: message.bank_id,
             account: Arc::clone(&message.account),
             is_startup: message.is_startup,
             data_slice,
@@ -400,6 +410,7 @@ impl FilteredUpdateOneof {
         Self::Transaction(FilteredUpdateTransaction {
             transaction: Arc::clone(&message.transaction),
             slot: message.slot,
+            bank_id: message.bank_id,
         })
     }
 
@@ -407,6 +418,7 @@ impl FilteredUpdateOneof {
         Self::TransactionStatus(FilteredUpdateTransactionStatus {
             transaction: Arc::clone(&message.transaction),
             slot: message.slot,
+            bank_id: message.bank_id,
         })
     }
 
@@ -484,6 +496,7 @@ pub struct FilteredUpdateAccount {
     pub slot: u64,
     pub is_startup: bool,
     pub data_slice: FilterAccountsDataSlice,
+    pub bank_id: Option<u64>,
 }
 
 impl prost::Message for FilteredUpdateAccount {
@@ -494,6 +507,9 @@ impl prost::Message for FilteredUpdateAccount {
         }
         if self.is_startup {
             ::prost::encoding::bool::encode(3u32, &self.is_startup, buf);
+        }
+        if let Some(bank_id) = self.bank_id {
+            ::prost::encoding::uint64::encode(4, &bank_id, buf);
         }
     }
 
@@ -509,7 +525,9 @@ impl prost::Message for FilteredUpdateAccount {
             ::prost::encoding::bool::encoded_len(3u32, &self.is_startup)
         } else {
             0
-        }
+        } + self.bank_id.as_ref().map_or(0, |bank_id| {
+            ::prost::encoding::uint64::encoded_len(4, bank_id)
+        })
     }
 
     fn merge_field(
@@ -636,6 +654,9 @@ impl prost::Message for FilteredUpdateSlot {
         if let Some(error) = &self.dead_error {
             ::prost::encoding::string::encode(4u32, error, buf);
         }
+        if let Some(bank_id) = self.bank_id {
+            ::prost::encoding::uint64::encode(5, &bank_id, buf);
+        }
     }
 
     fn encoded_len(&self) -> usize {
@@ -655,7 +676,9 @@ impl prost::Message for FilteredUpdateSlot {
             ::prost::encoding::string::encoded_len(4u32, error)
         } else {
             0
-        }
+        } + self.bank_id.as_ref().map_or(0, |bank_id| {
+            ::prost::encoding::uint64::encoded_len(5, bank_id)
+        })
     }
 
     fn merge_field(
@@ -677,6 +700,7 @@ impl prost::Message for FilteredUpdateSlot {
 pub struct FilteredUpdateTransaction {
     pub transaction: Arc<MessageTransactionInfo>,
     pub slot: u64,
+    pub bank_id: u64,
 }
 
 impl prost::Message for FilteredUpdateTransaction {
@@ -685,12 +709,20 @@ impl prost::Message for FilteredUpdateTransaction {
         if self.slot != 0u64 {
             ::prost::encoding::uint64::encode(2u32, &self.slot, buf);
         }
+        if self.bank_id != 0 {
+            ::prost::encoding::uint64::encode(3, &self.bank_id, buf);
+        }
     }
 
     fn encoded_len(&self) -> usize {
         prost_field_encoded_len(1u32, Self::tx_encoded_len(&self.transaction))
             + if self.slot != 0u64 {
                 ::prost::encoding::uint64::encoded_len(2u32, &self.slot)
+            } else {
+                0
+            }
+            + if self.bank_id != 0 {
+                ::prost::encoding::uint64::encoded_len(3, &self.bank_id)
             } else {
                 0
             }
@@ -752,6 +784,7 @@ impl FilteredUpdateTransaction {
 pub struct FilteredUpdateTransactionStatus {
     pub transaction: Arc<MessageTransactionInfo>,
     pub slot: u64,
+    pub bank_id: u64,
 }
 
 impl prost::Message for FilteredUpdateTransactionStatus {
@@ -770,6 +803,9 @@ impl prost::Message for FilteredUpdateTransactionStatus {
         }
         if let Some(msg) = &tx.meta.err {
             message::encode(5u32, msg, buf)
+        }
+        if self.bank_id != 0 {
+            ::prost::encoding::uint64::encode(6, &self.bank_id, buf);
         }
     }
 
@@ -796,6 +832,11 @@ impl prost::Message for FilteredUpdateTransactionStatus {
                 .err
                 .as_ref()
                 .map_or(0, |msg| message::encoded_len(5u32, msg))
+            + if self.bank_id != 0 {
+                ::prost::encoding::uint64::encoded_len(6, &self.bank_id)
+            } else {
+                0
+            }
     }
 
     fn merge_field(
@@ -874,6 +915,9 @@ impl prost::Message for FilteredUpdateBlock {
             );
             FilteredUpdateEntry::entry_encode_raw(entry, buf);
         }
+        if self.meta.bank_id != 0 {
+            ::prost::encoding::uint64::encode(14, &self.meta.bank_id, buf);
+        }
     }
 
     fn encoded_len(&self) -> usize {
@@ -937,6 +981,11 @@ impl prost::Message for FilteredUpdateBlock {
             + prost_repeated_encoded_len_map!(13u32, self.entries, |entry| {
                 FilteredUpdateEntry::entry_encoded_len(entry)
             })
+            + if self.meta.bank_id != 0 {
+                ::prost::encoding::uint64::encoded_len(14, &self.meta.bank_id)
+            } else {
+                0
+            }
     }
 
     fn merge_field(
@@ -1001,6 +1050,9 @@ impl FilteredUpdateEntry {
         if entry.starting_transaction_index != 0u64 {
             ::prost::encoding::uint64::encode(6u32, &entry.starting_transaction_index, buf);
         }
+        if entry.bank_id != 0 {
+            ::prost::encoding::uint64::encode(7, &entry.bank_id, buf);
+        }
     }
 
     fn entry_encoded_len(entry: &MessageEntry) -> usize {
@@ -1026,6 +1078,11 @@ impl FilteredUpdateEntry {
             }
             + if entry.starting_transaction_index != 0u64 {
                 ::prost::encoding::uint64::encoded_len(6u32, &entry.starting_transaction_index)
+            } else {
+                0
+            }
+            + if entry.bank_id != 0 {
+                ::prost::encoding::uint64::encoded_len(7, &entry.bank_id)
             } else {
                 0
             }
@@ -1134,6 +1191,7 @@ pub mod tests {
                 for is_startup in [true, false] {
                     for data_slice in create_account_data_slice() {
                         let msg = MessageAccount {
+                            bank_id: None,
                             account: Arc::clone(&account),
                             slot,
                             is_startup,
@@ -1150,6 +1208,7 @@ pub mod tests {
     pub fn create_entries() -> Vec<Arc<MessageEntry>> {
         [
             MessageEntry {
+                bank_id: 0,
                 slot: 299888121,
                 index: 42,
                 num_hashes: 128,
@@ -1159,6 +1218,7 @@ pub mod tests {
                 created_at: Timestamp::from(SystemTime::now()),
             },
             MessageEntry {
+                bank_id: 0,
                 slot: 299888121,
                 index: 0,
                 num_hashes: 16,
@@ -1242,6 +1302,7 @@ pub mod tests {
                 let slot = block.parent_slot + 1;
                 let block_meta1 = MessageBlockMeta {
                     block_meta: SubscribeUpdateBlockMeta {
+                        bank_id: 0,
                         parent_slot: block.parent_slot,
                         slot,
                         parent_blockhash: block.previous_blockhash,
@@ -1333,6 +1394,7 @@ pub mod tests {
                     encode_decode_cmp(
                         &["123"],
                         FilteredUpdateOneof::slot(MessageSlot {
+                            bank_id: None,
                             slot,
                             parent,
                             status,
@@ -1344,6 +1406,7 @@ pub mod tests {
                 encode_decode_cmp(
                     &["123"],
                     FilteredUpdateOneof::slot(MessageSlot {
+                        bank_id: None,
                         slot,
                         parent,
                         status: SlotStatus::Dead,
@@ -1359,6 +1422,7 @@ pub mod tests {
     fn test_message_transaction() {
         for transaction in load_predefined_transactions() {
             let msg = MessageTransaction {
+                bank_id: 0,
                 transaction,
                 slot: 42,
                 created_at: Timestamp::from(SystemTime::now()),
