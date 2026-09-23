@@ -14,7 +14,8 @@ crate-type = ["cdylib"]
 
 [dependencies]
 serde_json = "1.0.86"
-solana-transaction-status = "~2.3.0"
+# Must match the path proto's convert_from return types.
+solana-transaction-status = "4.1.2"
 wasm-bindgen = "0.2.100"
 yellowstone-grpc-proto = { path = "../../yellowstone-grpc-proto", version = "9.0.0", default-features = false, features = ["convert"] }
 
@@ -26,8 +27,3 @@ trivially_copy_pass_by_ref = "deny"
 [profile.release]
 lto = true
 codegen-units = 1
-
-# wasm32 and spl-token-confidential-transfer-proof-generation
-[patch.crates-io]
-spl-token-2022_6 = { package = "spl-token-2022", version = "6.0.0", git = "https://github.com/rpcpool/token-2022.git", tag = "program@v6.0.0-wasm" }
-spl-token-2022_7 = { package = "spl-token-2022", version = "7.0.0", git = "https://github.com/rpcpool/token-2022.git", tag = "program@v7.0.0-wasm" }
