@@ -19,11 +19,12 @@ mod hasher;
 #[cfg(feature = "convert")]
 mod set;
 
-#[cfg(feature = "convert")]
-pub use set::CompressedAccountFilterSet;
 pub use {
     constants::DEFAULT_HASH_SEED,
     error::{CuckooBuildError, TableFullError},
     filter::CuckooFilter,
     hasher::YellowstoneHasherBuilder,
 };
+
+#[cfg(feature = "convert")]
+pub use set::CompressedAccountFilterSet;

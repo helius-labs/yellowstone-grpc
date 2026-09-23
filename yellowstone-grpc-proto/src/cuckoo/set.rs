@@ -113,7 +113,7 @@ impl CompressedAccountFilterSet {
     }
 
     /// Returns the dirty flag and clears it. Call when transmitting: `true` → rebuild and send.
-    pub const fn take_dirty(&mut self) -> bool {
+    pub fn take_dirty(&mut self) -> bool {
         let dirty = self.dirty;
         self.dirty = false;
         dirty

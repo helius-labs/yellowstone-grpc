@@ -438,7 +438,7 @@ impl FilterAccountsState {
         Ok(this)
     }
 
-    const fn is_empty(&self) -> bool {
+    fn is_empty(&self) -> bool {
         self.memcmp.is_empty()
             && self.datasize.is_none()
             && !self.token_account_state
