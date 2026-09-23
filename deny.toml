@@ -42,4 +42,11 @@ ignore = [
     # openssl 0.10.71
     # Advisory: https://rustsec.org/advisories/RUSTSEC-2025-0022
     "RUSTSEC-2025-0022",
+
+    # bincode 1.3.3: maintenance-only advisory, not a reported vulnerability.
+    # Solana 4.1's account/transaction serialization still requires this codec;
+    # swapping codecs in an SDK schema change would break wire compatibility.
+    # Retain the pinned codec until upstream migrates; vulnerability checks remain.
+    # Advisory: https://rustsec.org/advisories/RUSTSEC-2025-0141
+    "RUSTSEC-2025-0141",
 ]
