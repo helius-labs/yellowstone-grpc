@@ -150,7 +150,6 @@ pub struct MessageSlot {
     pub status: SlotStatus,
     pub dead_error: Option<String>,
     pub created_at: Timestamp,
-    pub bank_id: Option<u64>,
 }
 
 impl MessageSlot {
@@ -165,7 +164,6 @@ impl MessageSlot {
                 None
             },
             created_at: Timestamp::from(SystemTime::now()),
-            bank_id: None,
         }
     }
 
@@ -181,7 +179,6 @@ impl MessageSlot {
                 .into(),
             dead_error: msg.dead_error.clone(),
             created_at,
-            bank_id: msg.bank_id,
         })
     }
 }
@@ -196,7 +193,6 @@ pub struct MessageAccountInfo {
     pub data: Vec<u8>,
     pub write_version: u64,
     pub txn_signature: Option<Signature>,
-    pub transaction_index: u64,
 }
 
 impl MessageAccountInfo {
@@ -210,9 +206,6 @@ impl MessageAccountInfo {
             data: info.data.into(),
             write_version: info.write_version,
             txn_signature: info.txn.map(|txn| *txn.signature()),
-            // V3 has no transaction index. Retain the accepted legacy zero
-            // ambiguity for transaction-backed updates; native writes are named.
-            transaction_index: if info.txn.is_some() { 0 } else { u64::MAX },
         }
     }
 
@@ -225,7 +218,6 @@ impl MessageAccountInfo {
             rent_epoch: msg.rent_epoch,
             data: msg.data,
             write_version: msg.write_version,
-            transaction_index: msg.transaction_index,
             txn_signature: msg
                 .txn_signature
                 .map(|sig| {
@@ -242,7 +234,6 @@ pub struct MessageAccount {
     pub slot: Slot,
     pub is_startup: bool,
     pub created_at: Timestamp,
-    pub bank_id: Option<u64>,
 }
 
 impl MessageAccount {
@@ -252,7 +243,6 @@ impl MessageAccount {
             slot,
             is_startup,
             created_at: Timestamp::from(SystemTime::now()),
-            bank_id: None,
         }
     }
 
@@ -267,7 +257,6 @@ impl MessageAccount {
             slot: msg.slot,
             is_startup: msg.is_startup,
             created_at,
-            bank_id: msg.bank_id,
         })
     }
 }
@@ -353,7 +342,6 @@ pub struct MessageTransaction {
     pub transaction: Arc<MessageTransactionInfo>,
     pub slot: u64,
     pub created_at: Timestamp,
-    pub bank_id: u64,
 }
 
 impl MessageTransaction {
@@ -362,7 +350,6 @@ impl MessageTransaction {
             transaction: Arc::new(MessageTransactionInfo::from_geyser(info)),
             slot,
             created_at: Timestamp::from(SystemTime::now()),
-            bank_id: 0,
         }
     }
 
@@ -377,7 +364,6 @@ impl MessageTransaction {
             )?),
             slot: msg.slot,
             created_at,
-            bank_id: msg.bank_id,
         })
     }
 }
@@ -391,7 +377,6 @@ pub struct MessageEntry {
     pub executed_transaction_count: u64,
     pub starting_transaction_index: u64,
     pub created_at: Timestamp,
-    pub bank_id: u64,
 }
 
 impl MessageEntry {
@@ -407,7 +392,6 @@ impl MessageEntry {
                 .try_into()
                 .expect("failed convert usize to u64"),
             created_at: Timestamp::from(SystemTime::now()),
-            bank_id: 0,
         }
     }
 
@@ -426,7 +410,6 @@ impl MessageEntry {
             executed_transaction_count: msg.executed_transaction_count,
             starting_transaction_index: msg.starting_transaction_index,
             created_at,
-            bank_id: msg.bank_id,
         })
     }
 }
@@ -467,7 +450,6 @@ impl MessageBlockMeta {
                 block_height: info.block_height.map(convert_to::create_block_height),
                 executed_transaction_count: info.executed_transaction_count,
                 entries_count: info.entry_count,
-                bank_id: 0,
             },
             created_at: Timestamp::from(SystemTime::now()),
         }
@@ -527,7 +509,6 @@ impl MessageBlock {
                     parent_blockhash: msg.parent_blockhash,
                     executed_transaction_count: msg.executed_transaction_count,
                     entries_count: msg.entries_count,
-                    bank_id: msg.bank_id,
                 },
                 created_at,
             }),

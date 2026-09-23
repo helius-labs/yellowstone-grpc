@@ -1,4 +1,4 @@
-use laserstream_core_proto::{geyser::*, prost::Message};
+use yellowstone_grpc_proto::{geyser::*, prost::Message};
 
 #[test]
 fn triton_bank_id_independent_wire_vectors() {
@@ -31,86 +31,34 @@ fn triton_bank_id_independent_wire_vectors() {
     }
 }
 
-#[cfg(feature = "plugin")]
 #[test]
-fn all_bank_ids_survive_custom_encoder_and_reverse_conversion() {
-    use laserstream_core_proto::plugin::filter::message::FilteredUpdate;
-    for bank in [None, Some(0), Some(1), Some(u64::MAX)] {
-        let scalar = bank.unwrap_or(0);
-        let account = SubscribeUpdateAccountInfo {
-            pubkey: vec![1; 32],
-            owner: vec![2; 32],
-            transaction_index: u64::MAX,
-            ..Default::default()
+fn nested_block_entry_preserves_independent_bank_and_legacy_fields() {
+    for value in [None, Some(0), Some(1), Some(u64::MAX)] {
+        // Entry: slot=100, index=3, starting_transaction_index=42.
+        let mut entry_bytes = vec![0x08, 100, 0x10, 3, 0x30, 42];
+        entry_bytes.extend(bank_wire(7, value));
+        // Block: slot=100, entries (tag 13); bank deliberately differs from entry.
+        let mut block_bytes = vec![0x08, 100, 0x6a, entry_bytes.len() as u8];
+        block_bytes.extend(entry_bytes);
+        block_bytes.extend(bank_wire(14, Some(99)));
+        // SubscribeUpdate.block (tag 5).
+        let mut update_bytes = vec![0x2a, block_bytes.len() as u8];
+        update_bytes.extend(block_bytes);
+        let decoded = SubscribeUpdate::decode(update_bytes.as_slice()).unwrap();
+        let Some(subscribe_update::UpdateOneof::Block(block)) = &decoded.update_oneof else {
+            panic!("expected block");
         };
-        let transaction = SubscribeUpdateTransactionInfo {
-            signature: vec![3; 64],
-            transaction: Some(Default::default()),
-            meta: Some(Default::default()),
-            index: 42,
-            ..Default::default()
-        };
-        let entry = SubscribeUpdateEntry {
-            slot: 100,
-            bank_id: scalar,
-            hash: vec![4; 32],
-            index: 3,
-            ..Default::default()
-        };
-        let updates = [
-            subscribe_update::UpdateOneof::Account(SubscribeUpdateAccount {
-                slot: 100,
-                bank_id: bank,
-                account: Some(account.clone()),
-                ..Default::default()
-            }),
-            subscribe_update::UpdateOneof::Slot(SubscribeUpdateSlot {
-                slot: 100,
-                bank_id: bank,
-                ..Default::default()
-            }),
-            subscribe_update::UpdateOneof::Transaction(SubscribeUpdateTransaction {
-                slot: 100,
-                bank_id: scalar,
-                transaction: Some(transaction.clone()),
-            }),
-            subscribe_update::UpdateOneof::TransactionStatus(SubscribeUpdateTransactionStatus {
-                slot: 100,
-                bank_id: scalar,
-                signature: vec![3; 64],
-                index: 42,
-                ..Default::default()
-            }),
-            subscribe_update::UpdateOneof::Entry(entry.clone()),
-            subscribe_update::UpdateOneof::BlockMeta(SubscribeUpdateBlockMeta {
-                slot: 100,
-                bank_id: scalar,
-                ..Default::default()
-            }),
-            subscribe_update::UpdateOneof::Block(SubscribeUpdateBlock {
-                slot: 100,
-                bank_id: scalar,
-                accounts: vec![account],
-                transactions: vec![transaction],
-                entries: vec![entry],
-                ..Default::default()
-            }),
-        ];
-        for update in updates {
-            let expected = SubscribeUpdate {
-                filters: vec!["all".into()],
-                update_oneof: Some(update),
-                created_at: Some(Default::default()),
-            };
-            let filtered = FilteredUpdate::from_subscribe_update(expected.clone()).unwrap();
-            assert_eq!(filtered.as_subscribe_update(), expected);
-            assert_eq!(filtered.encoded_len(), expected.encoded_len());
-            assert_eq!(filtered.encode_to_vec(), expected.encode_to_vec());
-            assert_eq!(
-                SubscribeUpdate::decode(filtered.encode_to_vec().as_slice()).unwrap(),
-                expected
-            );
-        }
+        assert_eq!(block.slot, 100);
+        assert_eq!(block.bank_id, 99);
+        assert_eq!(block.entries.len(), 1);
+        assert_eq!(block.entries[0].slot, 100);
+        assert_eq!(block.entries[0].index, 3);
+        assert_eq!(block.entries[0].starting_transaction_index, 42);
+        assert_eq!(block.entries[0].bank_id, value.unwrap_or(0));
+        assert_eq!(
+            SubscribeUpdate::decode(decoded.encode_to_vec().as_slice()).unwrap(),
+            decoded
+        );
     }
 }
 

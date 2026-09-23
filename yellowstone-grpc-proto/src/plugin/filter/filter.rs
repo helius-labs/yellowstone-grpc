@@ -1177,7 +1177,6 @@ mod tests {
             .copied()
             .collect();
         MessageTransaction {
-            bank_id: 0,
             transaction: Arc::new(MessageTransactionInfo {
                 signature: *sig,
                 is_vote: true,
