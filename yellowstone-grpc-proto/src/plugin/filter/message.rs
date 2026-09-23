@@ -186,7 +186,6 @@ impl FilteredUpdate {
             data: data_slice.get_slice(&message.data),
             write_version: message.write_version,
             txn_signature: message.txn_signature.map(|s| s.as_ref().into()),
-            transaction_index: 0,
         }
     }
 
