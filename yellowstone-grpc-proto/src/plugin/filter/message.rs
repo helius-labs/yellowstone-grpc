@@ -1,3 +1,5 @@
+use crate::prelude::SubscribeUpdateBatch;
+use prost::Message as ProstMessage;
 use {
     crate::{
         geyser::{
@@ -10,8 +12,9 @@ use {
         plugin::{
             filter::{name::FilterName, FilterAccountsDataSlice},
             message::{
-                MessageAccount, MessageAccountInfo, MessageBlock, MessageBlockMeta, MessageEntry,
-                MessageSlot, MessageTransaction, MessageTransactionInfo,
+                MessageAccount, MessageAccountInfo, MessageBlock, MessageBlockFooter,
+                MessageBlockMeta, MessageEntry, MessageSlot, MessageTransaction,
+                MessageTransactionInfo,
             },
         },
         solana::storage::confirmed_block,
@@ -34,8 +37,6 @@ use {
         time::SystemTime,
     },
 };
-use crate::prelude::SubscribeUpdateBatch;
-use prost::Message as ProstMessage;
 
 #[inline]
 pub const fn prost_field_encoded_len(tag: u32, len: usize) -> usize {
@@ -278,6 +279,9 @@ impl FilteredUpdate {
             FilteredUpdateOneof::Ping => UpdateOneof::Ping(SubscribeUpdatePing {}),
             FilteredUpdateOneof::Pong(msg) => UpdateOneof::Pong(*msg),
             FilteredUpdateOneof::BlockMeta(msg) => UpdateOneof::BlockMeta(msg.block_meta.clone()),
+            FilteredUpdateOneof::BlockFooter(msg) => {
+                UpdateOneof::BlockFooter(msg.block_footer.clone())
+            }
             FilteredUpdateOneof::Entry(msg) => {
                 UpdateOneof::Entry(Self::as_subscribe_update_entry(&msg.0))
             }
@@ -352,6 +356,10 @@ impl FilteredUpdate {
                 let block_meta = MessageBlockMeta::from_update_oneof(msg, created_at);
                 FilteredUpdateOneof::BlockMeta(Arc::new(block_meta))
             }
+            UpdateOneof::BlockFooter(msg) => {
+                let block_footer = MessageBlockFooter::from_update_oneof(msg, created_at);
+                FilteredUpdateOneof::BlockFooter(Arc::new(block_footer))
+            }
             UpdateOneof::Entry(msg) => {
                 let entry = MessageEntry::from_update_oneof(&msg, created_at)?;
                 FilteredUpdateOneof::Entry(FilteredUpdateEntry(Arc::new(entry)))
@@ -378,6 +386,7 @@ pub enum FilteredUpdateOneof {
     Ping,                                               // 6
     Pong(SubscribeUpdatePong),                          // 9
     BlockMeta(Arc<MessageBlockMeta>),                   // 7
+    BlockFooter(Arc<MessageBlockFooter>),               // 12
     Entry(FilteredUpdateEntry),                         // 8
 }
 
@@ -425,6 +434,10 @@ impl FilteredUpdateOneof {
         Self::BlockMeta(message)
     }
 
+    pub const fn block_footer(message: Arc<MessageBlockFooter>) -> Self {
+        Self::BlockFooter(message)
+    }
+
     pub const fn entry(message: Arc<MessageEntry>) -> Self {
         Self::Entry(FilteredUpdateEntry(message))
     }
@@ -444,6 +457,7 @@ impl prost::Message for FilteredUpdateOneof {
             }
             Self::Pong(msg) => message::encode(9u32, msg, buf),
             Self::BlockMeta(msg) => message::encode(7u32, &msg.block_meta, buf),
+            Self::BlockFooter(msg) => message::encode(12u32, &msg.block_footer, buf),
             Self::Entry(msg) => message::encode(8u32, msg, buf),
         }
     }
@@ -458,6 +472,7 @@ impl prost::Message for FilteredUpdateOneof {
             Self::Ping => key_len(6u32) + encoded_len_varint(0),
             Self::Pong(msg) => message::encoded_len(9u32, msg),
             Self::BlockMeta(msg) => message::encoded_len(7u32, &msg.block_meta),
+            Self::BlockFooter(msg) => message::encoded_len(12u32, &msg.block_footer),
             Self::Entry(msg) => message::encoded_len(8u32, msg),
         }
     }
@@ -1031,17 +1046,17 @@ pub mod tests {
         super::{FilteredUpdate, FilteredUpdateBlock, FilteredUpdateFilters, FilteredUpdateOneof},
         crate::{
             convert_to,
-            geyser::{SubscribeUpdate, SubscribeUpdateBlockMeta},
+            geyser::{SubscribeUpdate, SubscribeUpdateBlockFooter, SubscribeUpdateBlockMeta},
             plugin::{
                 filter::{name::FilterName, FilterAccountsDataSlice},
                 message::{
-                    MessageAccount, MessageAccountInfo, MessageBlockMeta, MessageEntry,
-                    MessageSlot, MessageTransaction, MessageTransactionInfo, SlotStatus,
+                    MessageAccount, MessageAccountInfo, MessageBlockFooter, MessageBlockMeta,
+                    MessageEntry, MessageSlot, MessageTransaction, MessageTransactionInfo,
+                    SlotStatus,
                 },
             },
         },
         prost::Message as _,
-        prost_011::Message as _,
         prost_types::Timestamp,
         solana_hash::Hash,
         solana_message::SimpleAddressLoader,
@@ -1380,6 +1395,26 @@ pub mod tests {
     fn test_message_blockmeta() {
         for block_meta in load_predefined_blockmeta() {
             encode_decode_cmp(&["123"], FilteredUpdateOneof::block_meta(block_meta));
+        }
+    }
+
+    #[test]
+    fn test_message_block_footer() {
+        for (bank_hash, nanos, user_agent) in [
+            (vec![0u8; 32], 0u64, Vec::new()),
+            (vec![7u8; 32], u64::MAX, b"agave/3.0.0".to_vec()),
+        ] {
+            let message = Arc::new(MessageBlockFooter {
+                block_footer: SubscribeUpdateBlockFooter {
+                    slot: 42,
+                    bank_id: 7,
+                    bank_hash,
+                    block_producer_time_nanos: nanos,
+                    block_user_agent: user_agent,
+                },
+                created_at: Timestamp::default(),
+            });
+            encode_decode_cmp(&["123"], FilteredUpdateOneof::block_footer(message));
         }
     }
 
