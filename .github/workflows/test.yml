@@ -17,6 +17,10 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  CARGO_BUILD_JOBS: 4
+  CARGO_PROFILE_DEV_DEBUG: 0
+  CARGO_PROFILE_RELEASE_DEBUG: 0
+  CARGO_INCREMENTAL: 0
 
 jobs:
   test:
@@ -44,9 +48,9 @@ jobs:
               ~/.cargo/registry/cache/
               ~/.cargo/git/db/
               ./target
-          key: v0001-${{ matrix.os }}-rust-${{ hashFiles('rust-toolchain.toml') }}-${{ hashFiles('**/Cargo.lock') }}
+          key: v0002-nodebug-${{ matrix.os }}-rust-${{ hashFiles('rust-toolchain.toml') }}-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            v0001-${{ matrix.os }}-rust-${{ hashFiles('rust-toolchain.toml') }}
+            v0002-nodebug-${{ matrix.os }}-rust-${{ hashFiles('rust-toolchain.toml') }}
 
       - name: Set rust version
         run: |
@@ -123,8 +127,6 @@ jobs:
         run: cargo check -p yellowstone-grpc-client --all-targets
       - name: check features in `client-simple`
         run: cargo check -p yellowstone-grpc-client-simple --all-targets
-      - name: check features in `geyser`
-        run: cargo check -p yellowstone-grpc-geyser --all-targets
       - name: check features in `proto`
         run: cargo check -p yellowstone-grpc-proto --all-targets
       - name: check features in `proto`

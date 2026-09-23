@@ -23,8 +23,10 @@ impl crate::geyser::SubscribeUpdateAccountInfo {
 
 #[cfg(test)]
 mod tests {
-    use super::AccountIndex;
-    use crate::{geyser::SubscribeUpdateAccountInfo, prost::Message};
+    use {
+        super::AccountIndex,
+        crate::{geyser::SubscribeUpdateAccountInfo, prost::Message},
+    };
 
     #[test]
     fn account_index() {

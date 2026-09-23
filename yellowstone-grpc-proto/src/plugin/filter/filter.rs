@@ -438,7 +438,7 @@ impl FilterAccountsState {
         Ok(this)
     }
 
-    fn is_empty(&self) -> bool {
+    const fn is_empty(&self) -> bool {
         self.memcmp.is_empty()
             && self.datasize.is_none()
             && !self.token_account_state
@@ -1261,6 +1261,7 @@ mod tests {
                 account_required: vec![],
                 cuckoo_account_include: None,
                 token_accounts: None,
+                match_mints: false,
             },
         );
 
@@ -1298,6 +1299,7 @@ mod tests {
                 account_required: vec![],
                 cuckoo_account_include: None,
                 token_accounts: None,
+                match_mints: false,
             },
         );
 
@@ -1341,6 +1343,7 @@ mod tests {
                 account_required: vec![],
                 cuckoo_account_include: None,
                 token_accounts: None,
+                match_mints: false,
             },
         );
 
@@ -1408,6 +1411,7 @@ mod tests {
                 account_required: vec![],
                 cuckoo_account_include: None,
                 token_accounts: None,
+                match_mints: false,
             },
         );
 
@@ -1475,6 +1479,7 @@ mod tests {
                 account_required: vec![],
                 cuckoo_account_include: None,
                 token_accounts: None,
+                match_mints: false,
             },
         );
 
@@ -1528,6 +1533,7 @@ mod tests {
                 account_required,
                 cuckoo_account_include: None,
                 token_accounts: None,
+                match_mints: false,
             },
         );
 
@@ -1603,6 +1609,7 @@ mod tests {
                 account_required,
                 cuckoo_account_include: None,
                 token_accounts: None,
+                match_mints: false,
             },
         );
 
