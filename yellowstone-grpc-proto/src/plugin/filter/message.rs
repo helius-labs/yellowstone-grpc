@@ -14,7 +14,6 @@ use {
                 MessageSlot, MessageTransaction, MessageTransactionInfo,
             },
         },
-        prelude::SubscribeUpdateBatch,
         solana::storage::confirmed_block,
     },
     bytes::buf::{Buf, BufMut},
@@ -23,7 +22,7 @@ use {
             encode_key, encode_varint, encoded_len_varint, key_len, message, DecodeContext,
             WireType,
         },
-        DecodeError, Message as ProstMessage,
+        DecodeError,
     },
     prost_types::Timestamp,
     smallvec::SmallVec,
@@ -35,6 +34,8 @@ use {
         time::SystemTime,
     },
 };
+use crate::prelude::SubscribeUpdateBatch;
+use prost::Message as ProstMessage;
 
 #[inline]
 pub const fn prost_field_encoded_len(tag: u32, len: usize) -> usize {
@@ -1046,6 +1047,7 @@ pub mod tests {
             },
         },
         prost::Message as _,
+        prost_011::Message as _,
         prost_types::Timestamp,
         solana_hash::Hash,
         solana_message::SimpleAddressLoader,
