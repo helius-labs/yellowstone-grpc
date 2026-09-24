@@ -448,7 +448,7 @@ impl FilterAccountsState {
         Ok(this)
     }
 
-    const fn is_empty(&self) -> bool {
+    fn is_empty(&self) -> bool {
         self.memcmp.is_empty()
             && self.datasize.is_none()
             && !self.token_account_state
@@ -840,8 +840,8 @@ impl FilterEntries {
 
         Ok(Self {
             filters: configs
-                .keys()
-                .map(|name| names.get(name))
+                .iter()
+                .map(|(name, _filter)| names.get(name))
                 .collect::<Result<_, _>>()?,
         })
     }
@@ -1002,8 +1002,8 @@ impl FilterBlocksMeta {
 
         Ok(Self {
             filters: configs
-                .keys()
-                .map(|name| names.get(name))
+                .iter()
+                .map(|(name, _filter)| names.get(name))
                 .collect::<Result<_, _>>()?,
         })
     }
