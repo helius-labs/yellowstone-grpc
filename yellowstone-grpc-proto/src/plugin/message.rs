@@ -438,6 +438,7 @@ impl MessageBlockMeta {
     pub fn from_geyser(info: &ReplicaBlockInfoV4<'_>) -> Self {
         Self {
             block_meta: SubscribeUpdateBlockMeta {
+                bank_id: 0,
                 parent_slot: info.parent_slot,
                 slot: info.slot,
                 parent_blockhash: info.parent_blockhash.to_string(),
@@ -500,6 +501,7 @@ impl MessageBlock {
         Ok(Self {
             meta: Arc::new(MessageBlockMeta {
                 block_meta: SubscribeUpdateBlockMeta {
+                    bank_id: 0,
                     slot: msg.slot,
                     blockhash: msg.blockhash,
                     rewards: msg.rewards,
