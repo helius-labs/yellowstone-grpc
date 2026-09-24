@@ -97,6 +97,7 @@ async fn main() -> anyhow::Result<()> {
             slots: HashMap::new(),
             accounts: HashMap::new(),
             transactions: HashMap::new(),
+            block_footer: HashMap::new(),
             transactions_status: hashmap! { "".to_owned() => SubscribeRequestFilterTransactions {
                 vote: args.vote,
                 failed: args.failed,
@@ -106,6 +107,7 @@ async fn main() -> anyhow::Result<()> {
                 account_required: args.account_required,
                 token_accounts: None,
                 cuckoo_account_include: None,
+                match_mints: false,
             } },
             entry: HashMap::new(),
             blocks: HashMap::new(),
