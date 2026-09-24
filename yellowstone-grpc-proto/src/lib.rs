@@ -302,9 +302,7 @@ pub mod convert_to {
             Some(RewardType::Rent) => proto::RewardType::Rent,
             Some(RewardType::Staking) => proto::RewardType::Staking,
             Some(RewardType::Voting) => proto::RewardType::Voting,
-            // Wire enum stops at Voting=4; 4.x-only DeactivatedStake maps to Unspecified
-            // to preserve the frozen serve-side wire contract.
-            Some(RewardType::DeactivatedStake) => proto::RewardType::Unspecified,
+            Some(RewardType::DeactivatedStake) => proto::RewardType::DeactivatedStake,
         }
     }
 
@@ -606,15 +604,18 @@ pub mod convert_from {
             pubkey: reward.pubkey,
             lamports: reward.lamports,
             post_balance: reward.post_balance,
-            reward_type: match proto::RewardType::try_from(reward.reward_type)
-                .map_err(|_| "failed to parse reward_type")?
-            {
-                proto::RewardType::Unspecified => None,
-                proto::RewardType::Fee => Some(RewardType::Fee),
-                proto::RewardType::Rent => Some(RewardType::Rent),
-                proto::RewardType::Staking => Some(RewardType::Staking),
-                proto::RewardType::Voting => Some(RewardType::Voting),
-            },
+            reward_type: proto::RewardType::try_from(reward.reward_type)
+                .ok()
+                .and_then(|reward_type| match reward_type {
+                    proto::RewardType::Unspecified => None,
+                    proto::RewardType::Fee => Some(RewardType::Fee),
+                    proto::RewardType::Rent => Some(RewardType::Rent),
+                    proto::RewardType::Staking => Some(RewardType::Staking),
+                    proto::RewardType::Voting => Some(RewardType::Voting),
+                    proto::RewardType::DeactivatedStake => Some(RewardType::DeactivatedStake),
+                    // solana-transaction-status 4.1.x has no VATDebit variant.
+                    proto::RewardType::VatDebit => None,
+                }),
             commission: if reward.commission.is_empty() {
                 None
             } else {
@@ -701,5 +702,46 @@ pub mod convert_from {
             rent_epoch: account.rent_epoch,
         };
         Ok((pubkey, account))
+    }
+}
+
+#[cfg(all(test, feature = "convert"))]
+mod tests {
+    use {
+        super::{convert_from, convert_to, prelude as proto},
+        solana_transaction_status::RewardType,
+    };
+
+    fn proto_reward(reward_type: i32) -> proto::Reward {
+        proto::Reward {
+            pubkey: "11111111111111111111111111111111".to_owned(),
+            lamports: 1_000,
+            post_balance: 50_000,
+            reward_type,
+            commission: String::new(),
+            commission_bps: String::new(),
+        }
+    }
+
+    #[test]
+    fn deactivated_stake_round_trips() {
+        let encoded = convert_to::create_reward_type(Some(RewardType::DeactivatedStake)) as i32;
+        assert_eq!(encoded, proto::RewardType::DeactivatedStake as i32);
+
+        let decoded = convert_from::create_reward(proto_reward(encoded)).unwrap();
+        assert_eq!(decoded.reward_type, Some(RewardType::DeactivatedStake));
+    }
+
+    #[test]
+    fn vat_debit_decodes_as_none() {
+        let decoded =
+            convert_from::create_reward(proto_reward(proto::RewardType::VatDebit as i32)).unwrap();
+        assert_eq!(decoded.reward_type, None);
+    }
+
+    #[test]
+    fn unknown_reward_type_decodes_as_none() {
+        let decoded = convert_from::create_reward(proto_reward(99)).unwrap();
+        assert_eq!(decoded.reward_type, None);
     }
 }
