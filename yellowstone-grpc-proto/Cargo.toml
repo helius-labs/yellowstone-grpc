@@ -27,6 +27,10 @@ prost_011 = { workspace = true, optional = true }
 siphasher = { workspace = true }
 serde = { workspace = true, optional = true }
 solana-account = { workspace = true, optional = true }
+solana-address = { workspace = true, optional = true }
+solana-instruction-error = { workspace = true, optional = true }
+solana-reward-info = { workspace = true, optional = true }
+solana-short-vec = { workspace = true, optional = true }
 solana-account-decoder = { workspace = true, optional = true }
 solana-clock = { workspace = true, optional = true }
 solana-hash = { workspace = true, optional = true }
@@ -62,6 +66,10 @@ tonic-prost-build = { workspace = true }
 default = ["convert", "tonic", "tonic-compression"]
 convert = [
     "dep:bincode",
+    "dep:solana-address",
+    "dep:solana-instruction-error",
+    "dep:solana-reward-info",
+    "dep:solana-short-vec",
     "dep:solana-account",
     "dep:solana-account-decoder",
     "dep:solana-clock",
