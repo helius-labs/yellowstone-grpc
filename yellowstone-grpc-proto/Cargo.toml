@@ -49,7 +49,7 @@ criterion = { workspace = true }
 prost_011 = { workspace = true }
 solana-keypair = { workspace = true }
 solana-signer = { workspace = true }
-solana-storage-proto = { workspace = true }
+solana-storage-proto = { workspace = true, features = ["agave-unstable-api"] }
 solana-transaction = { workspace = true, features = ["blake3"] }
 
 [build-dependencies]
