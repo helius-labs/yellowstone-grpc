@@ -1,13 +1,16 @@
 syntax = "proto3";
 
+import "google/protobuf/timestamp.proto";
 import public "solana-storage.proto";
 
-option go_package = "github.com/rpcpool/solana-geyser-grpc/golang/proto";
+option go_package = "github.com/rpcpool/yellowstone-grpc/examples/golang/proto";
 
 package geyser;
 
 service Geyser {
   rpc Subscribe(stream SubscribeRequest) returns (stream SubscribeUpdate) {}
+  rpc SubscribePreprocessed(stream SubscribePreprocessedRequest) returns (stream SubscribePreprocessedUpdate) {}
+  rpc SubscribeReplayInfo(SubscribeReplayInfoRequest) returns (SubscribeReplayInfoResponse) {}
   rpc Ping(PingRequest) returns (PongResponse) {}
   rpc GetLatestBlockhash(GetLatestBlockhashRequest) returns (GetLatestBlockhashResponse) {}
   rpc GetBlockHeight(GetBlockHeightRequest) returns (GetBlockHeightResponse) {}
@@ -16,10 +19,57 @@ service Geyser {
   rpc GetVersion(GetVersionRequest) returns (GetVersionResponse) {}
 }
 
+// Subscriptions to Preprocessed transactions
+message SubscribePreprocessedRequest {
+  map<string, SubscribePreprocessedRequestFilterTransactions> transactions = 1;
+  optional SubscribeRequestPing ping = 2;
+
+}
+
+message SubscribePreprocessedRequestFilterTransactions {
+  optional bool vote = 1;
+  optional string signature = 2;
+  repeated string account_include = 3;
+  repeated string account_exclude = 4;
+  repeated string account_required = 5;
+  optional uint64 from_slot = 20;
+}
+
+message SubscribePreprocessedUpdate {
+  repeated string filters = 1;
+  oneof update_oneof {
+    SubscribePreprocessedTransaction transaction = 2;
+    SubscribeUpdatePing ping = 3;
+    SubscribeUpdatePong pong = 4;
+  }
+  google.protobuf.Timestamp created_at = 5;
+}
+
+message SubscribePreprocessedTransaction {
+  SubscribePreprocessedTransactionInfo transaction = 1;
+  uint64 slot = 2;
+}
+
+message SubscribePreprocessedTransactionInfo {
+  bytes signature = 1;
+  bool is_vote = 2;
+  solana.storage.ConfirmedBlock.Transaction transaction = 3;
+}
+
 enum CommitmentLevel {
   PROCESSED = 0;
   CONFIRMED = 1;
   FINALIZED = 2;
+}
+
+enum SlotStatus {
+  SLOT_PROCESSED = 0;
+  SLOT_CONFIRMED = 1;
+  SLOT_FINALIZED = 2;
+  SLOT_FIRST_SHRED_RECEIVED = 3;
+  SLOT_COMPLETED = 4;
+  SLOT_CREATED_BANK = 5;
+  SLOT_DEAD = 6;
 }
 
 message SubscribeRequest {
@@ -33,12 +83,35 @@ message SubscribeRequest {
   optional CommitmentLevel commitment = 6;
   repeated SubscribeRequestAccountsDataSlice accounts_data_slice = 7;
   optional SubscribeRequestPing ping = 9;
+  optional uint64 from_slot = 11;
+  map<string, SubscribeRequestFilterBlockFooter> block_footer = 12;
 }
 
 message SubscribeRequestFilterAccounts {
   repeated string account = 2;
   repeated string owner = 3;
   repeated SubscribeRequestFilterAccountsFilter filters = 4;
+  optional bool nonempty_txn_signature = 5;
+  optional CuckooFilter cuckoo_accounts_filter = 6;
+  // Tag 31 was the deprecated no-op notify_on opt-in; removed once Agave 4.2
+  // made write-only delivery the default at the source.
+  reserved 31;
+  reserved "notify_on";
+}
+
+// Hash algorithm for a CuckooFilter (on the wire for forward-compat).
+enum CuckooHashAlgorithm {
+  SIP_HASH = 0;
+}
+
+// Compact probabilistic account filter: fingerprints, not pubkeys. No false negatives, <1% false positives.
+message CuckooFilter {
+  bytes data = 1;
+  uint32 bucket_count = 2;
+  uint32 entries_per_bucket = 3;
+  uint32 fingerprint_bits = 4;
+  uint64 hash_seed = 5;
+  CuckooHashAlgorithm hash_algorithm = 6;
 }
 
 message SubscribeRequestFilterAccountsFilter {
@@ -46,6 +119,7 @@ message SubscribeRequestFilterAccountsFilter {
     SubscribeRequestFilterAccountsFilterMemcmp memcmp = 1;
     uint64 datasize = 2;
     bool token_account_state = 3;
+    SubscribeRequestFilterAccountsFilterLamports lamports = 4;
   }
 }
 
@@ -58,8 +132,18 @@ message SubscribeRequestFilterAccountsFilterMemcmp {
   }
 }
 
+message SubscribeRequestFilterAccountsFilterLamports {
+  oneof cmp {
+    uint64 eq = 1;
+    uint64 ne = 2;
+    uint64 lt = 3;
+    uint64 gt = 4;
+  }
+}
+
 message SubscribeRequestFilterSlots {
   optional bool filter_by_commitment = 1;
+  optional bool interslot_updates = 2;
 }
 
 message SubscribeRequestFilterTransactions {
@@ -69,6 +153,26 @@ message SubscribeRequestFilterTransactions {
   repeated string account_include = 3;
   repeated string account_exclude = 4;
   repeated string account_required = 6;
+  // Helius extension: compact cuckoo filter for account_include, OR-combined
+  // with the explicit account_include set. Field 31 keeps clear of upstream
+  // Triton's lower field numbers to avoid future collisions.
+  optional CuckooFilter cuckoo_account_include = 31;
+  // Helius extension: ATA / token-account expansion control. When set,
+  // account_include / account_exclude / account_required also match
+  // against owners of pre/post token balances on each transaction.
+  // Absent = no expansion.
+  optional TokenAccountExpansionControlFlag token_accounts = 30;
+  // Also match the account lists against pre/post token-balance mints.
+  bool match_mints = 32;
+}
+
+// Helius extension: discriminator for `SubscribeRequestFilterTransactions.token_accounts`.
+enum TokenAccountExpansionControlFlag {
+  // Match an owner if it owns a pre OR post token balance on the tx.
+  ALL = 0;
+  // Match an owner whose token balance changed in amount (per
+  // `account_index`) or whose token account was closed.
+  BALANCE_CHANGED = 1;
 }
 
 message SubscribeRequestFilterBlocks {
@@ -81,6 +185,8 @@ message SubscribeRequestFilterBlocks {
 message SubscribeRequestFilterBlocksMeta {}
 
 message SubscribeRequestFilterEntry {}
+
+message SubscribeRequestFilterBlockFooter {}
 
 message SubscribeRequestAccountsDataSlice {
   uint64 offset = 1;
@@ -103,7 +209,13 @@ message SubscribeUpdate {
     SubscribeUpdatePong pong = 9;
     SubscribeUpdateBlockMeta block_meta = 7;
     SubscribeUpdateEntry entry = 8;
+    SubscribeUpdateBlockFooter block_footer = 12;
   }
+  google.protobuf.Timestamp created_at = 11;
+}
+
+message SubscribeUpdateBatch {
+  repeated SubscribeUpdate updates = 1;
 }
 
 message SubscribeUpdateAccount {
@@ -126,7 +238,8 @@ message SubscribeUpdateAccountInfo {
 message SubscribeUpdateSlot {
   uint64 slot = 1;
   optional uint64 parent = 2;
-  CommitmentLevel status = 3;
+  SlotStatus status = 3;
+  optional string dead_error = 4;
 }
 
 message SubscribeUpdateTransaction {
@@ -178,6 +291,14 @@ message SubscribeUpdateBlockMeta {
   uint64 entries_count = 9;
 }
 
+message SubscribeUpdateBlockFooter {
+  uint64 slot = 1;
+  uint64 bank_id = 2;
+  bytes bank_hash = 3;
+  uint64 block_producer_time_nanos = 4;
+  bytes block_user_agent = 5;
+}
+
 message SubscribeUpdateEntry {
   uint64 slot = 1;
   uint64 index = 2;
@@ -194,6 +315,12 @@ message SubscribeUpdatePong {
 }
 
 // non-streaming methods
+
+message SubscribeReplayInfoRequest {}
+
+message SubscribeReplayInfoResponse {
+  optional uint64 first_available = 1;
+}
 
 message PingRequest {
   int32 count = 1;
