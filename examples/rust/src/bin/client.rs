@@ -895,13 +895,18 @@ async fn geyser_subscribe(
                         );
                     }
                     Some(UpdateOneof::BlockFooter(msg)) => {
-                        print_update("blockFooter", created_at, &filters, json!({
-                            "slot": msg.slot.to_string(),
-                            "bankId": msg.bank_id.to_string(),
-                            "bankHash": msg.bank_hash,
-                            "blockProducerTimeNanos": msg.block_producer_time_nanos.to_string(),
-                            "blockUserAgent": msg.block_user_agent,
-                        }));
+                        print_update(
+                            "blockFooter",
+                            created_at,
+                            &filters,
+                            json!({
+                                "slot": msg.slot.to_string(),
+                                "bankId": msg.bank_id.to_string(),
+                                "bankHash": msg.bank_hash,
+                                "blockProducerTimeNanos": msg.block_producer_time_nanos.to_string(),
+                                "blockUserAgent": msg.block_user_agent,
+                            }),
+                        );
                     }
                     Some(UpdateOneof::Block(msg)) => {
                         print_update(
