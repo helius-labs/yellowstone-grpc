@@ -15,6 +15,7 @@ use {
                 MessageTransactionInfo,
             },
         },
+        prelude::SubscribeUpdateBatch,
         solana::storage::confirmed_block,
     },
     bytes::buf::{Buf, BufMut},
@@ -23,7 +24,7 @@ use {
             encode_key, encode_varint, encoded_len_varint, key_len, message, DecodeContext,
             WireType,
         },
-        DecodeError,
+        DecodeError, Message as ProstMessage,
     },
     prost_types::Timestamp,
     smallvec::SmallVec,
@@ -35,8 +36,6 @@ use {
         time::SystemTime,
     },
 };
-use crate::prelude::SubscribeUpdateBatch;
-use prost::Message as ProstMessage;
 
 #[inline]
 pub const fn prost_field_encoded_len(tag: u32, len: usize) -> usize {
@@ -211,6 +210,7 @@ impl FilteredUpdate {
             hash: message.hash.to_bytes().to_vec(),
             executed_transaction_count: message.executed_transaction_count,
             starting_transaction_index: message.starting_transaction_index,
+            bank_id: 0,
         }
     }
 
@@ -223,15 +223,18 @@ impl FilteredUpdate {
                 )),
                 slot: msg.slot,
                 is_startup: msg.is_startup,
+                bank_id: None,
             }),
             FilteredUpdateOneof::Slot(msg) => UpdateOneof::Slot(SubscribeUpdateSlot {
                 slot: msg.slot,
                 parent: msg.parent,
                 status: msg.status as i32,
                 dead_error: msg.dead_error.clone(),
+                bank_id: None,
             }),
             FilteredUpdateOneof::Transaction(msg) => {
                 UpdateOneof::Transaction(SubscribeUpdateTransaction {
+                    bank_id: 0,
                     transaction: Some(Self::as_subscribe_update_transaction(
                         msg.transaction.as_ref(),
                     )),
@@ -245,9 +248,11 @@ impl FilteredUpdate {
                     is_vote: msg.transaction.is_vote,
                     index: msg.transaction.index as u64,
                     err: msg.transaction.meta.err.clone(),
+                    bank_id: 0,
                 })
             }
             FilteredUpdateOneof::Block(msg) => UpdateOneof::Block(SubscribeUpdateBlock {
+                bank_id: 0,
                 slot: msg.meta.slot,
                 blockhash: msg.meta.blockhash.clone(),
                 rewards: msg.meta.rewards.clone(),
@@ -1248,6 +1253,7 @@ pub mod tests {
                 let slot = block.parent_slot + 1;
                 let block_meta1 = MessageBlockMeta {
                     block_meta: SubscribeUpdateBlockMeta {
+                        bank_id: 0,
                         parent_slot: block.parent_slot,
                         slot,
                         parent_blockhash: block.previous_blockhash,
