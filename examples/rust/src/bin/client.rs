@@ -513,6 +513,7 @@ impl Action {
                             account_required: args.transactions_account_required.clone(),
                             token_accounts: None,
                             cuckoo_account_include: None,
+                            match_mints: false,
                         },
                     );
                 }
@@ -530,13 +531,19 @@ impl Action {
                             account_required: args.transactions_status_account_required.clone(),
                             token_accounts: None,
                             cuckoo_account_include: None,
+                            match_mints: false,
                         },
                     );
                 }
 
                 let mut entries: EntryFilterMap = HashMap::new();
                 if args.entries {
-                    entries.insert("client".to_owned(), SubscribeRequestFilterEntry {});
+                    entries.insert(
+                        "client".to_owned(),
+                        SubscribeRequestFilterEntry {
+                            include_update_parent: None,
+                        },
+                    );
                 }
 
                 let mut blocks: BlocksFilterMap = HashMap::new();
@@ -582,6 +589,7 @@ impl Action {
                         entry: entries,
                         blocks,
                         blocks_meta,
+                        block_footer: HashMap::new(),
                         commitment: commitment.map(|x| x as i32),
                         accounts_data_slice,
                         ping,
@@ -722,6 +730,8 @@ async fn geyser_subscribe(
     let pb_entries = crate_progress_bar(&pb_multi, ProgressBarTpl::Msg("entries"))?;
     let mut pb_blocks_mt_c = 0;
     let pb_blocks_mt = crate_progress_bar(&pb_multi, ProgressBarTpl::Msg("blocks meta"))?;
+    let mut pb_footers_c = 0;
+    let pb_footers = crate_progress_bar(&pb_multi, ProgressBarTpl::Msg("block footers"))?;
     let mut pb_blocks_c = 0;
     let pb_blocks = crate_progress_bar(&pb_multi, ProgressBarTpl::Msg("blocks"))?;
     let mut pb_pp_c = 0;
@@ -748,6 +758,10 @@ async fn geyser_subscribe(
                         Some(UpdateOneof::Entry(_)) => (&mut pb_entries_c, &pb_entries),
                         Some(UpdateOneof::BlockMeta(_)) => (&mut pb_blocks_mt_c, &pb_blocks_mt),
                         Some(UpdateOneof::Block(_)) => (&mut pb_blocks_c, &pb_blocks),
+                        Some(UpdateOneof::BlockFooter(_)) => (&mut pb_footers_c, &pb_footers),
+                        Some(UpdateOneof::EntryUpdateParent(_)) => {
+                            (&mut pb_entries_c, &pb_entries)
+                        }
                         Some(UpdateOneof::Ping(_)) => (&mut pb_pp_c, &pb_pp),
                         Some(UpdateOneof::Pong(_)) => (&mut pb_pp_c, &pb_pp),
                         None => {
@@ -888,6 +902,33 @@ async fn geyser_subscribe(
                             }),
                         );
                     }
+                    Some(UpdateOneof::BlockFooter(msg)) => {
+                        print_update(
+                            "blockFooter",
+                            created_at,
+                            &filters,
+                            json!({
+                                "slot": msg.slot.to_string(),
+                                "bankId": msg.bank_id.to_string(),
+                                "bankHash": msg.bank_hash,
+                                "blockProducerTimeNanos": msg.block_producer_time_nanos.to_string(),
+                                "blockUserAgent": msg.block_user_agent,
+                            }),
+                        );
+                    }
+                    Some(UpdateOneof::EntryUpdateParent(msg)) => {
+                        print_update(
+                            "entryUpdateParent",
+                            created_at,
+                            &filters,
+                            json!({
+                                "slot": msg.slot.to_string(),
+                                "clearedBankId": msg.cleared_bank_id.to_string(),
+                                "parentSlot": msg.parent_slot.to_string(),
+                                "parentBlockId": msg.parent_block_id,
+                            }),
+                        );
+                    }
                     Some(UpdateOneof::Block(msg)) => {
                         print_update(
                             "block",
@@ -952,6 +993,7 @@ async fn geyser_subscribe(
                     entry: HashMap::default(),
                     blocks: HashMap::default(),
                     blocks_meta: HashMap::default(),
+                    block_footer: HashMap::new(),
                     commitment: None,
                     accounts_data_slice: Vec::default(),
                     ping: None,

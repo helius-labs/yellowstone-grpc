@@ -91,7 +91,7 @@ impl<T, S: BuildHasher> CuckooFilter<T, S> {
 
     /// Maps a hash to a bucket index using bitmask (why bucket_count is power of 2).
     #[inline]
-    fn index(&self, hash: u64) -> usize {
+    const fn index(&self, hash: u64) -> usize {
         hash as usize & (self.buckets.len() - 1)
     }
 

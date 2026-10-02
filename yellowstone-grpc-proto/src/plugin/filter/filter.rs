@@ -7,16 +7,16 @@ use {
             CommitmentLevel as CommitmentLevelProto, SubscribeRequest,
             SubscribeRequestAccountsDataSlice, SubscribeRequestFilterAccounts,
             SubscribeRequestFilterAccountsFilter, SubscribeRequestFilterAccountsFilterLamports,
-            SubscribeRequestFilterBlocks, SubscribeRequestFilterBlocksMeta,
-            SubscribeRequestFilterEntry, SubscribeRequestFilterSlots,
-            SubscribeRequestFilterTransactions,
+            SubscribeRequestFilterBlockFooter, SubscribeRequestFilterBlocks,
+            SubscribeRequestFilterBlocksMeta, SubscribeRequestFilterEntry,
+            SubscribeRequestFilterSlots, SubscribeRequestFilterTransactions,
         },
         plugin::{
             filter::{
                 limits::{
-                    FilterLimits, FilterLimitsAccounts, FilterLimitsBlocks, FilterLimitsBlocksMeta,
-                    FilterLimitsCheckError, FilterLimitsEntries, FilterLimitsSlots,
-                    FilterLimitsTransactions,
+                    FilterLimits, FilterLimitsAccounts, FilterLimitsBlockFooter,
+                    FilterLimitsBlocks, FilterLimitsBlocksMeta, FilterLimitsCheckError,
+                    FilterLimitsEntries, FilterLimitsSlots, FilterLimitsTransactions,
                 },
                 message::{
                     FilteredUpdate, FilteredUpdateBlock, FilteredUpdateFilters,
@@ -25,8 +25,8 @@ use {
                 name::{FilterName, FilterNameError, FilterNames},
             },
             message::{
-                CommitmentLevel, Message, MessageAccount, MessageBlock, MessageBlockMeta,
-                MessageEntry, MessageSlot, MessageTransaction, SlotStatus,
+                CommitmentLevel, Message, MessageAccount, MessageBlock, MessageBlockFooter,
+                MessageBlockMeta, MessageEntry, MessageSlot, MessageTransaction, SlotStatus,
             },
         },
     },
@@ -105,6 +105,7 @@ pub struct Filter {
     entries: FilterEntries,
     blocks: FilterBlocks,
     blocks_meta: FilterBlocksMeta,
+    block_footer: FilterBlockFooter,
     commitment: CommitmentLevel,
     accounts_data_slice: FilterAccountsDataSlice,
     ping: Option<i32>,
@@ -126,6 +127,7 @@ impl Default for Filter {
             entries: FilterEntries::default(),
             blocks: FilterBlocks::default(),
             blocks_meta: FilterBlocksMeta::default(),
+            block_footer: FilterBlockFooter::default(),
             commitment: CommitmentLevel::Processed,
             accounts_data_slice: FilterAccountsDataSlice::default(),
             ping: None,
@@ -157,6 +159,11 @@ impl Filter {
             entries: FilterEntries::new(&config.entry, &limits.entries, names)?,
             blocks: FilterBlocks::new(&config.blocks, &limits.blocks, names)?,
             blocks_meta: FilterBlocksMeta::new(&config.blocks_meta, &limits.blocks_meta, names)?,
+            block_footer: FilterBlockFooter::new(
+                &config.block_footer,
+                &limits.block_footer,
+                names,
+            )?,
             commitment: Self::decode_commitment(config.commitment)?,
             accounts_data_slice: FilterAccountsDataSlice::new(
                 &config.accounts_data_slice,
@@ -201,7 +208,7 @@ impl Filter {
         Self::decode_pubkeys(pubkeys, limit).collect::<FilterResult<_>>()
     }
 
-    pub fn get_metrics(&self) -> [(&'static str, usize); 8] {
+    pub fn get_metrics(&self) -> [(&'static str, usize); 9] {
         [
             ("accounts", self.accounts.filters.len()),
             ("slots", self.slots.filters.len()),
@@ -213,6 +220,7 @@ impl Filter {
             ("entries", self.entries.filters.len()),
             ("blocks", self.blocks.filters.len()),
             ("blocks_meta", self.blocks_meta.filters.len()),
+            ("block_footer", self.block_footer.filters.len()),
             (
                 "all",
                 self.accounts.filters.len()
@@ -221,7 +229,8 @@ impl Filter {
                     + self.transactions_status.filters.len()
                     + self.entries.filters.len()
                     + self.blocks.filters.len()
-                    + self.blocks_meta.filters.len(),
+                    + self.blocks_meta.filters.len()
+                    + self.block_footer.filters.len(),
             ),
         ]
     }
@@ -248,6 +257,7 @@ impl Filter {
             Message::Entry(message) => self.entries.get_updates(message),
             Message::Block(message) => self.blocks.get_updates(message, &self.accounts_data_slice),
             Message::BlockMeta(message) => self.blocks_meta.get_updates(message),
+            Message::BlockFooter(message) => self.block_footer.get_updates(message),
         }
     }
 
@@ -438,7 +448,7 @@ impl FilterAccountsState {
         Ok(this)
     }
 
-    fn is_empty(&self) -> bool {
+    const fn is_empty(&self) -> bool {
         self.memcmp.is_empty()
             && self.datasize.is_none()
             && !self.token_account_state
@@ -830,8 +840,8 @@ impl FilterEntries {
 
         Ok(Self {
             filters: configs
-                .iter()
-                .map(|(name, _filter)| names.get(name))
+                .keys()
+                .map(|name| names.get(name))
                 .collect::<Result<_, _>>()?,
         })
     }
@@ -992,8 +1002,8 @@ impl FilterBlocksMeta {
 
         Ok(Self {
             filters: configs
-                .iter()
-                .map(|(name, _filter)| names.get(name))
+                .keys()
+                .map(|name| names.get(name))
                 .collect::<Result<_, _>>()?,
         })
     }
@@ -1003,6 +1013,37 @@ impl FilterBlocksMeta {
         filtered_updates_once_ref!(
             filters,
             FilteredUpdateOneof::block_meta(Arc::clone(message)),
+            message.created_at
+        )
+    }
+}
+
+#[derive(Debug, Default, Clone)]
+struct FilterBlockFooter {
+    filters: Vec<FilterName>,
+}
+
+impl FilterBlockFooter {
+    fn new(
+        configs: &HashMap<String, SubscribeRequestFilterBlockFooter>,
+        limits: &FilterLimitsBlockFooter,
+        names: &mut FilterNames,
+    ) -> FilterResult<Self> {
+        FilterLimits::check_max(configs.len(), limits.max)?;
+
+        Ok(Self {
+            filters: configs
+                .keys()
+                .map(|name| names.get(name))
+                .collect::<Result<_, _>>()?,
+        })
+    }
+
+    fn get_updates(&self, message: &Arc<MessageBlockFooter>) -> FilteredUpdates {
+        let filters = self.filters.as_slice();
+        filtered_updates_once_ref!(
+            filters,
+            FilteredUpdateOneof::block_footer(Arc::clone(message)),
             message.created_at
         )
     }
@@ -1108,7 +1149,7 @@ mod tests {
             convert_to,
             geyser::{
                 SubscribeRequest, SubscribeRequestFilterAccounts,
-                SubscribeRequestFilterTransactions,
+                SubscribeRequestFilterBlockFooter, SubscribeRequestFilterTransactions,
             },
             plugin::{
                 filter::{
@@ -1116,7 +1157,9 @@ mod tests {
                     message::{FilteredUpdateFilters, FilteredUpdateOneof},
                     name::{FilterName, FilterNames},
                 },
-                message::{Message, MessageTransaction, MessageTransactionInfo},
+                message::{
+                    Message, MessageBlockFooter, MessageTransaction, MessageTransactionInfo,
+                },
             },
         },
         prost_types::Timestamp,
@@ -1190,6 +1233,19 @@ mod tests {
         }
     }
 
+    fn create_message_block_footer(slot: u64, bank_id: u64) -> Arc<MessageBlockFooter> {
+        Arc::new(MessageBlockFooter {
+            block_footer: crate::geyser::SubscribeUpdateBlockFooter {
+                slot,
+                bank_id,
+                bank_hash: vec![1; 32],
+                block_producer_time_nanos: 123,
+                block_user_agent: b"agave".to_vec(),
+            },
+            created_at: Timestamp::from(SystemTime::now()),
+        })
+    }
+
     #[test]
     fn test_filters_all_empty() {
         // ensure Filter can be created with empty values
@@ -1200,6 +1256,7 @@ mod tests {
             transactions_status: HashMap::new(),
             blocks: HashMap::new(),
             blocks_meta: HashMap::new(),
+            block_footer: HashMap::new(),
             entry: HashMap::new(),
             commitment: None,
             accounts_data_slice: Vec::new(),
@@ -1233,6 +1290,7 @@ mod tests {
             transactions_status: HashMap::new(),
             blocks: HashMap::new(),
             blocks_meta: HashMap::new(),
+            block_footer: HashMap::new(),
             entry: HashMap::new(),
             commitment: None,
             accounts_data_slice: Vec::new(),
@@ -1244,6 +1302,36 @@ mod tests {
         let filter = Filter::new(&config, &limit, &mut create_filter_names());
         // filter should fail
         assert!(filter.is_err());
+    }
+
+    #[test]
+    fn test_filter_block_footer_matches_exact_subscription_names() {
+        let config = SubscribeRequest {
+            block_footer: HashMap::from([
+                ("footer-a".to_owned(), SubscribeRequestFilterBlockFooter {}),
+                ("footer-b".to_owned(), SubscribeRequestFilterBlockFooter {}),
+            ]),
+            ..Default::default()
+        };
+        let filter = Filter::new(
+            &config,
+            &FilterLimits::default(),
+            &mut create_filter_names(),
+        )
+        .expect("filter should build");
+
+        let updates = filter.get_updates(
+            &Message::BlockFooter(create_message_block_footer(42, 7)),
+            None,
+        );
+        assert_eq!(updates.len(), 1);
+        assert_eq!(updates[0].filters.len(), 2);
+        assert!(updates[0].filters.contains(&FilterName::new("footer-a")));
+        assert!(updates[0].filters.contains(&FilterName::new("footer-b")));
+        assert!(matches!(
+            updates[0].message,
+            FilteredUpdateOneof::BlockFooter(_)
+        ));
     }
 
     #[test]
@@ -1261,6 +1349,7 @@ mod tests {
                 account_required: vec![],
                 cuckoo_account_include: None,
                 token_accounts: None,
+                match_mints: false,
             },
         );
 
@@ -1271,6 +1360,7 @@ mod tests {
             transactions_status: HashMap::new(),
             blocks: HashMap::new(),
             blocks_meta: HashMap::new(),
+            block_footer: HashMap::new(),
             entry: HashMap::new(),
             commitment: None,
             accounts_data_slice: Vec::new(),
@@ -1298,6 +1388,7 @@ mod tests {
                 account_required: vec![],
                 cuckoo_account_include: None,
                 token_accounts: None,
+                match_mints: false,
             },
         );
 
@@ -1308,6 +1399,7 @@ mod tests {
             transactions_status: HashMap::new(),
             blocks: HashMap::new(),
             blocks_meta: HashMap::new(),
+            block_footer: HashMap::new(),
             entry: HashMap::new(),
             commitment: None,
             accounts_data_slice: Vec::new(),
@@ -1341,6 +1433,7 @@ mod tests {
                 account_required: vec![],
                 cuckoo_account_include: None,
                 token_accounts: None,
+                match_mints: false,
             },
         );
 
@@ -1351,6 +1444,7 @@ mod tests {
             transactions_status: HashMap::new(),
             blocks: HashMap::new(),
             blocks_meta: HashMap::new(),
+            block_footer: HashMap::new(),
             entry: HashMap::new(),
             commitment: None,
             accounts_data_slice: Vec::new(),
@@ -1408,6 +1502,7 @@ mod tests {
                 account_required: vec![],
                 cuckoo_account_include: None,
                 token_accounts: None,
+                match_mints: false,
             },
         );
 
@@ -1418,6 +1513,7 @@ mod tests {
             transactions_status: HashMap::new(),
             blocks: HashMap::new(),
             blocks_meta: HashMap::new(),
+            block_footer: HashMap::new(),
             entry: HashMap::new(),
             commitment: None,
             accounts_data_slice: Vec::new(),
@@ -1475,6 +1571,7 @@ mod tests {
                 account_required: vec![],
                 cuckoo_account_include: None,
                 token_accounts: None,
+                match_mints: false,
             },
         );
 
@@ -1485,6 +1582,7 @@ mod tests {
             transactions_status: HashMap::new(),
             blocks: HashMap::new(),
             blocks_meta: HashMap::new(),
+            block_footer: HashMap::new(),
             entry: HashMap::new(),
             commitment: None,
             accounts_data_slice: Vec::new(),
@@ -1528,6 +1626,7 @@ mod tests {
                 account_required,
                 cuckoo_account_include: None,
                 token_accounts: None,
+                match_mints: false,
             },
         );
 
@@ -1538,6 +1637,7 @@ mod tests {
             transactions_status: HashMap::new(),
             blocks: HashMap::new(),
             blocks_meta: HashMap::new(),
+            block_footer: HashMap::new(),
             entry: HashMap::new(),
             commitment: None,
             accounts_data_slice: Vec::new(),
@@ -1603,6 +1703,7 @@ mod tests {
                 account_required,
                 cuckoo_account_include: None,
                 token_accounts: None,
+                match_mints: false,
             },
         );
 
@@ -1613,6 +1714,7 @@ mod tests {
             transactions_status: HashMap::new(),
             blocks: HashMap::new(),
             blocks_meta: HashMap::new(),
+            block_footer: HashMap::new(),
             entry: HashMap::new(),
             commitment: None,
             accounts_data_slice: Vec::new(),

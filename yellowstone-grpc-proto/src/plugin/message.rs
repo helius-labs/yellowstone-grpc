@@ -4,8 +4,9 @@ use {
         geyser::{
             subscribe_update::UpdateOneof, CommitmentLevel as CommitmentLevelProto,
             SlotStatus as SlotStatusProto, SubscribeUpdateAccount, SubscribeUpdateAccountInfo,
-            SubscribeUpdateBlock, SubscribeUpdateBlockMeta, SubscribeUpdateEntry,
-            SubscribeUpdateSlot, SubscribeUpdateTransaction, SubscribeUpdateTransactionInfo,
+            SubscribeUpdateBlock, SubscribeUpdateBlockFooter, SubscribeUpdateBlockMeta,
+            SubscribeUpdateEntry, SubscribeUpdateSlot, SubscribeUpdateTransaction,
+            SubscribeUpdateTransactionInfo,
         },
         solana::storage::confirmed_block,
     },
@@ -438,6 +439,7 @@ impl MessageBlockMeta {
     pub fn from_geyser(info: &ReplicaBlockInfoV4<'_>) -> Self {
         Self {
             block_meta: SubscribeUpdateBlockMeta {
+                bank_id: 0,
                 parent_slot: info.parent_slot,
                 slot: info.slot,
                 parent_blockhash: info.parent_blockhash.to_string(),
@@ -461,6 +463,38 @@ impl MessageBlockMeta {
     ) -> Self {
         Self {
             block_meta,
+            created_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MessageBlockFooter {
+    pub block_footer: SubscribeUpdateBlockFooter,
+    pub created_at: Timestamp,
+}
+
+impl Deref for MessageBlockFooter {
+    type Target = SubscribeUpdateBlockFooter;
+
+    fn deref(&self) -> &Self::Target {
+        &self.block_footer
+    }
+}
+
+impl DerefMut for MessageBlockFooter {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.block_footer
+    }
+}
+
+impl MessageBlockFooter {
+    pub const fn from_update_oneof(
+        block_footer: SubscribeUpdateBlockFooter,
+        created_at: Timestamp,
+    ) -> Self {
+        Self {
+            block_footer,
             created_at,
         }
     }
@@ -500,6 +534,7 @@ impl MessageBlock {
         Ok(Self {
             meta: Arc::new(MessageBlockMeta {
                 block_meta: SubscribeUpdateBlockMeta {
+                    bank_id: 0,
                     slot: msg.slot,
                     blockhash: msg.blockhash,
                     rewards: msg.rewards,
@@ -540,6 +575,7 @@ pub enum Message {
     Transaction(MessageTransaction),
     Entry(Arc<MessageEntry>),
     BlockMeta(Arc<MessageBlockMeta>),
+    BlockFooter(Arc<MessageBlockFooter>),
     Block(Arc<MessageBlock>),
 }
 
@@ -552,6 +588,7 @@ impl Message {
             Self::Transaction(msg) => msg.slot,
             Self::Entry(msg) => msg.slot,
             Self::BlockMeta(msg) => msg.slot,
+            Self::BlockFooter(msg) => msg.slot,
             Self::Block(msg) => msg.meta.slot,
         }
     }
@@ -574,10 +611,16 @@ impl Message {
             UpdateOneof::Block(msg) => {
                 Self::Block(Arc::new(MessageBlock::from_update_oneof(msg, created_at)?))
             }
+            UpdateOneof::EntryUpdateParent(_) => {
+                return Err("EntryUpdateParent message is not supported")
+            }
             UpdateOneof::Ping(_) => return Err("Ping message is not supported"),
             UpdateOneof::Pong(_) => return Err("Pong message is not supported"),
             UpdateOneof::BlockMeta(msg) => Self::BlockMeta(Arc::new(
                 MessageBlockMeta::from_update_oneof(msg, created_at),
+            )),
+            UpdateOneof::BlockFooter(msg) => Self::BlockFooter(Arc::new(
+                MessageBlockFooter::from_update_oneof(msg, created_at),
             )),
             UpdateOneof::Entry(msg) => {
                 Self::Entry(Arc::new(MessageEntry::from_update_oneof(&msg, created_at)?))
