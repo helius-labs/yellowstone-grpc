@@ -1,4 +1,4 @@
-use yellowstone_grpc_proto::{geyser::*, prost::Message};
+use laserstream_core_proto::{geyser::*, prost::Message};
 
 #[test]
 fn triton_bank_id_independent_wire_vectors() {
