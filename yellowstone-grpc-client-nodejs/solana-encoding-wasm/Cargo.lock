@@ -1647,7 +1647,7 @@ dependencies = [
 
 [[package]]
 name = "laserstream-core-proto"
-version = "13.1.0"
+version = "13.1.1"
 dependencies = [
  "anyhow",
  "bincode",
