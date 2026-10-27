@@ -1065,7 +1065,6 @@ pub mod tests {
             },
         },
         prost::Message as _,
-        prost_011::Message as _,
         prost_types::Timestamp,
         solana_hash::Hash,
         solana_message::SimpleAddressLoader,
