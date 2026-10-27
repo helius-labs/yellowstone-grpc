@@ -303,6 +303,11 @@ pub mod convert_to {
             Some(RewardType::Staking) => proto::RewardType::Staking,
             Some(RewardType::Voting) => proto::RewardType::Voting,
             Some(RewardType::DeactivatedStake) => proto::RewardType::DeactivatedStake,
+            // solana-transaction-status 4.3 adds VATDebit (solana-reward-info 7),
+            // and this crate allows any 4.x, so newer variants are matched
+            // without naming them. Unreachable on 4.1.x and 4.2.x.
+            #[allow(unreachable_patterns)]
+            Some(_) => proto::RewardType::Unspecified,
         }
     }
 
