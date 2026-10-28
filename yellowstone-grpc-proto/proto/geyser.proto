@@ -58,7 +58,8 @@ message SubscribePreprocessedTransactionInfo {
 
 enum CommitmentLevel {
   PROCESSED = 0;
-  CONFIRMED = 1;
+  reserved 1;
+  reserved "CONFIRMED";
   FINALIZED = 2;
 }
 

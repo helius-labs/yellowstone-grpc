@@ -180,7 +180,7 @@ impl Filter {
             .map_err(|_error| FilterError::InvalidCommitment { commitment })?;
         if !matches!(
             commitment,
-            CommitmentLevel::Processed | CommitmentLevel::Confirmed | CommitmentLevel::Finalized
+            CommitmentLevel::Processed | CommitmentLevel::Finalized
         ) {
             Err(FilterError::InvalidCommitment {
                 commitment: commitment as i32,

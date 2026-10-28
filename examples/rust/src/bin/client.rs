@@ -211,7 +211,6 @@ impl Args {
 enum ArgsCommitment {
     #[default]
     Processed,
-    Confirmed,
     Finalized,
 }
 
@@ -219,7 +218,6 @@ impl From<ArgsCommitment> for CommitmentLevel {
     fn from(commitment: ArgsCommitment) -> Self {
         match commitment {
             ArgsCommitment::Processed => CommitmentLevel::Processed,
-            ArgsCommitment::Confirmed => CommitmentLevel::Confirmed,
             ArgsCommitment::Finalized => CommitmentLevel::Finalized,
         }
     }
