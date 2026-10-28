@@ -303,9 +303,9 @@ pub mod convert_to {
             Some(RewardType::Staking) => proto::RewardType::Staking,
             Some(RewardType::Voting) => proto::RewardType::Voting,
             Some(RewardType::DeactivatedStake) => proto::RewardType::DeactivatedStake,
-            // solana-transaction-status 4.3 adds VATDebit (solana-reward-info 7),
-            // and this crate allows any 4.x, so newer variants are matched
-            // without naming them. Unreachable on 4.1.x and 4.2.x.
+            Some(RewardType::VATDebit) => proto::RewardType::VatDebit,
+            // Keep newer RewardType variants source-compatible until they receive an
+            // explicit wire mapping.
             #[allow(unreachable_patterns)]
             Some(_) => proto::RewardType::Unspecified,
         }
@@ -618,8 +618,7 @@ pub mod convert_from {
                     proto::RewardType::Staking => Some(RewardType::Staking),
                     proto::RewardType::Voting => Some(RewardType::Voting),
                     proto::RewardType::DeactivatedStake => Some(RewardType::DeactivatedStake),
-                    // solana-transaction-status 4.1.x has no VATDebit variant.
-                    proto::RewardType::VatDebit => None,
+                    proto::RewardType::VatDebit => Some(RewardType::VATDebit),
                 }),
             commission: if reward.commission.is_empty() {
                 None
@@ -738,10 +737,12 @@ mod tests {
     }
 
     #[test]
-    fn vat_debit_decodes_as_none() {
-        let decoded =
-            convert_from::create_reward(proto_reward(proto::RewardType::VatDebit as i32)).unwrap();
-        assert_eq!(decoded.reward_type, None);
+    fn vat_debit_round_trips() {
+        let encoded = convert_to::create_reward_type(Some(RewardType::VATDebit)) as i32;
+        assert_eq!(encoded, proto::RewardType::VatDebit as i32);
+
+        let decoded = convert_from::create_reward(proto_reward(encoded)).unwrap();
+        assert_eq!(decoded.reward_type, Some(RewardType::VATDebit));
     }
 
     #[test]
