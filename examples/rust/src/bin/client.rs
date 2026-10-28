@@ -759,9 +759,7 @@ async fn geyser_subscribe(
                         Some(UpdateOneof::BlockMeta(_)) => (&mut pb_blocks_mt_c, &pb_blocks_mt),
                         Some(UpdateOneof::Block(_)) => (&mut pb_blocks_c, &pb_blocks),
                         Some(UpdateOneof::BlockFooter(_)) => (&mut pb_footers_c, &pb_footers),
-                        Some(UpdateOneof::EntryUpdateParent(_)) => {
-                            (&mut pb_entries_c, &pb_entries)
-                        }
+                        Some(UpdateOneof::EntryUpdateParent(_)) => (&mut pb_entries_c, &pb_entries),
                         Some(UpdateOneof::Ping(_)) => (&mut pb_pp_c, &pb_pp),
                         Some(UpdateOneof::Pong(_)) => (&mut pb_pp_c, &pb_pp),
                         None => {

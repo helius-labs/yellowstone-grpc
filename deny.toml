@@ -39,6 +39,24 @@ ignore = [
     # Advisory: https://rustsec.org/advisories/RUSTSEC-2025-0012
     "RUSTSEC-2025-0012",
 
+    # bincode and number_prefix are transitive Solana 4.1 dependencies with no safe upgrade
+    # Advisories: https://rustsec.org/advisories/RUSTSEC-2025-0141
+    #             https://rustsec.org/advisories/RUSTSEC-2025-0119
+    "RUSTSEC-2025-0141",
+    "RUSTSEC-2025-0119",
+
+    # libsecp256k1 is a transitive Solana 2.3 WASM dependency with no maintained replacement
+    # Advisory: https://rustsec.org/advisories/RUSTSEC-2025-0161
+    "RUSTSEC-2025-0161",
+
+    # zstd 0.13 / zstd-safe 7.x via Solana 4.1; fixes require zstd 0.14 / zstd-safe 8
+    # Advisories: https://rustsec.org/advisories/RUSTSEC-2026-0391
+    #             https://rustsec.org/advisories/RUSTSEC-2026-0398
+    #             https://rustsec.org/advisories/RUSTSEC-2026-0403
+    "RUSTSEC-2026-0391",
+    "RUSTSEC-2026-0398",
+    "RUSTSEC-2026-0403",
+
     # openssl 0.10.71
     # Advisory: https://rustsec.org/advisories/RUSTSEC-2025-0022
     "RUSTSEC-2025-0022",

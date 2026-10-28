@@ -25,15 +25,6 @@ jobs:
         os: [ubuntu-22.04, ubuntu-24.04]
     runs-on: ["${{ matrix.os }}"]
     steps:
-      - name: Maximize build space
-        uses: easimon/maximize-build-space@v10
-        with:
-          root-reserve-mb: 4096
-          remove-dotnet: 'true'
-          remove-android: 'true'
-          remove-haskell: 'true'
-          remove-codeql: 'true'
-
       - uses: actions/checkout@v4
 
       - uses: actions/cache@v4
@@ -43,7 +34,6 @@ jobs:
               ~/.cargo/registry/index/
               ~/.cargo/registry/cache/
               ~/.cargo/git/db/
-              ./target
           key: v0001-${{ matrix.os }}-rust-${{ hashFiles('rust-toolchain.toml') }}-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             v0001-${{ matrix.os }}-rust-${{ hashFiles('rust-toolchain.toml') }}
@@ -98,13 +88,13 @@ jobs:
           cargo +nightly fmt --all -- --check
 
       - name: cargo deny check advisories
-        uses: EmbarkStudios/cargo-deny-action@v2.0.1
+        uses: EmbarkStudios/cargo-deny-action@v2.1.1
         with:
           command: check advisories
           rust-version: ${{ env.RUST_STABLE }}
 
       - name: cargo deny check advisories wasm
-        uses: EmbarkStudios/cargo-deny-action@v2.0.1
+        uses: EmbarkStudios/cargo-deny-action@v2.1.1
         with:
           command: check advisories
           rust-version: ${{ env.RUST_STABLE }}
@@ -123,8 +113,6 @@ jobs:
         run: cargo check -p yellowstone-grpc-client --all-targets
       - name: check features in `client-simple`
         run: cargo check -p yellowstone-grpc-client-simple --all-targets
-      - name: check features in `geyser`
-        run: cargo check -p yellowstone-grpc-geyser --all-targets
       - name: check features in `proto`
         run: cargo check -p yellowstone-grpc-proto --all-targets
       - name: check features in `proto`
