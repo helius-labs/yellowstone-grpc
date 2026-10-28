@@ -110,13 +110,13 @@ jobs:
       #     cargo clippy --target wasm32-unknown-unknown --all-targets
 
       - name: check features in `client`
-        run: cargo check -p yellowstone-grpc-client --all-targets
+        run: cargo check -p laserstream-core-client --all-targets
       - name: check features in `client-simple`
         run: cargo check -p yellowstone-grpc-client-simple --all-targets
       - name: check features in `proto`
-        run: cargo check -p yellowstone-grpc-proto --all-targets
+        run: cargo check -p laserstream-core-proto --all-targets
       - name: check features in `proto`
-        run: cargo check -p yellowstone-grpc-proto --all-targets --all-features
+        run: cargo check -p laserstream-core-proto --all-targets --all-features
 
       - name: cargo test
         run: cargo test --all-features

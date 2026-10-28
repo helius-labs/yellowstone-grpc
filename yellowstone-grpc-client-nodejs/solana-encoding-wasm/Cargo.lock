@@ -1646,6 +1646,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "laserstream-core-proto"
+version = "13.1.0"
+dependencies = [
+ "anyhow",
+ "bincode",
+ "prost",
+ "prost-types",
+ "protobuf-src",
+ "siphasher",
+ "solana-account 4.7.0",
+ "solana-account-decoder 4.3.2",
+ "solana-clock 3.2.1",
+ "solana-hash 4.7.0",
+ "solana-message 4.6.0",
+ "solana-pubkey 4.4.0",
+ "solana-signature 3.6.0",
+ "solana-transaction 4.3.0",
+ "solana-transaction-context 4.3.2",
+ "solana-transaction-error 3.4.0",
+ "solana-transaction-status 4.3.2",
+ "tonic-build",
+ "tonic-prost-build",
+]
+
+[[package]]
 name = "lazy_static"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6714,38 +6739,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "yellowstone-grpc-proto"
-version = "9.0.1"
-dependencies = [
- "anyhow",
- "bincode",
- "prost",
- "prost-types",
- "protobuf-src",
- "siphasher",
- "solana-account 4.7.0",
- "solana-account-decoder 4.3.2",
- "solana-clock 3.2.1",
- "solana-hash 4.7.0",
- "solana-message 4.6.0",
- "solana-pubkey 4.4.0",
- "solana-signature 3.6.0",
- "solana-transaction 4.3.0",
- "solana-transaction-context 4.3.2",
- "solana-transaction-error 3.4.0",
- "solana-transaction-status 4.3.2",
- "tonic-build",
- "tonic-prost-build",
-]
-
-[[package]]
 name = "yellowstone-grpc-solana-encoding-wasm"
 version = "3.0.0"
 dependencies = [
+ "laserstream-core-proto",
  "serde_json",
  "solana-transaction-status 2.3.2",
  "wasm-bindgen",
- "yellowstone-grpc-proto",
 ]
 
 [[package]]

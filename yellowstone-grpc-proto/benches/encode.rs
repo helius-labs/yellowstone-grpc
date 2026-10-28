@@ -1,9 +1,6 @@
 use {
     criterion::{criterion_group, criterion_main, BenchmarkId, Criterion},
-    prost::Message as _,
-    prost_types::Timestamp,
-    std::time::{Duration, SystemTime},
-    yellowstone_grpc_proto::plugin::{
+    laserstream_core_proto::plugin::{
         filter::message::{
             tests::{
                 create_accounts, create_message_filters, load_predefined_blocks,
@@ -13,6 +10,9 @@ use {
         },
         message::MessageTransaction,
     },
+    prost::Message as _,
+    prost_types::Timestamp,
+    std::time::{Duration, SystemTime},
 };
 
 fn bench_account(c: &mut Criterion) {
