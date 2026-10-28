@@ -1558,7 +1558,7 @@ dependencies = [
 
 [[package]]
 name = "laserstream-core-client"
-version = "13.1.0"
+version = "0.0.0"
 dependencies = [
  "bytes",
  "futures",
@@ -1571,7 +1571,7 @@ dependencies = [
 
 [[package]]
 name = "laserstream-core-proto"
-version = "13.1.1"
+version = "0.0.0"
 dependencies = [
  "agave-geyser-plugin-interface",
  "anyhow",

@@ -1,0 +1,91 @@
+name: LaserStream core crates
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/publish-crates.yml'
+      - 'VERSION'
+      - 'scripts/release.py'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'yellowstone-grpc-client/Cargo.toml'
+      - 'yellowstone-grpc-proto/Cargo.toml'
+      - 'yellowstone-grpc-client-nodejs/solana-encoding-wasm/Cargo.toml'
+      - 'yellowstone-grpc-client-nodejs/solana-encoding-wasm/Cargo.lock'
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: laserstream-core-crates-${{ github.event.release.tag_name || github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  package-check:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.91.0
+      - name: Check templates
+        run: python3 scripts/release.py check-template
+      - name: Render release version
+        run: python3 scripts/release.py render
+      - name: Package both crates
+        run: python3 scripts/release.py prepare --sha "$GITHUB_SHA"
+
+  publish:
+    if: github.event_name == 'release'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+          fetch-depth: 0
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.91.0
+      - name: Render release version
+        run: |
+          python3 scripts/release.py check-template
+          python3 scripts/release.py render
+      - name: Validate release source
+        run: >-
+          python3 scripts/release.py preflight-release
+          --tag "${{ github.event.release.tag_name }}"
+          --sha "$GITHUB_SHA"
+      - name: Test both crates
+        run: cargo test --locked --all-features --package laserstream-core-proto --package laserstream-core-client
+      - name: Package both crates
+        run: python3 scripts/release.py prepare --sha "$GITHUB_SHA"
+      - name: Authenticate to crates.io
+        uses: rust-lang/crates-io-auth-action@v1
+        id: auth
+      - name: Publish proto
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+        run: >-
+          python3 scripts/release.py publish
+          --crate laserstream-core-proto
+          --sha "$GITHUB_SHA"
+      - name: Publish client
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+        run: >-
+          python3 scripts/release.py publish
+          --crate laserstream-core-client
+          --sha "$GITHUB_SHA"
+      - name: Verify crates.io
+        run: python3 scripts/release.py verify --sha "$GITHUB_SHA"
