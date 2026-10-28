@@ -215,6 +215,7 @@ enum ArgsCommitment {
     Finalized,
 }
 
+#[allow(deprecated)]
 impl From<ArgsCommitment> for CommitmentLevel {
     fn from(commitment: ArgsCommitment) -> Self {
         match commitment {

@@ -173,6 +173,7 @@ impl Filter {
         })
     }
 
+    #[allow(deprecated)]
     fn decode_commitment(commitment: Option<i32>) -> FilterResult<CommitmentLevel> {
         let commitment = commitment.unwrap_or(CommitmentLevelProto::Processed as i32);
         let commitment = CommitmentLevelProto::try_from(commitment)

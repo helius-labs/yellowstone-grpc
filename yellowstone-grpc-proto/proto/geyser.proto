@@ -58,7 +58,7 @@ message SubscribePreprocessedTransactionInfo {
 
 enum CommitmentLevel {
   PROCESSED = 0;
-  CONFIRMED = 1;
+  CONFIRMED = 1 [deprecated = true];
   FINALIZED = 2;
 }
 
