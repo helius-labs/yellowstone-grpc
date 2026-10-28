@@ -32,7 +32,7 @@ type FromUpdateOneofResult<T> = Result<T, &'static str>;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum CommitmentLevel {
     Processed,
-    #[deprecated(note = "use Processed or Finalized; Confirmed will be removed in 14.0.0")]
+    #[deprecated(note = "use Finalized; Confirmed will be removed in 14.0.0")]
     Confirmed,
     Finalized,
 }
