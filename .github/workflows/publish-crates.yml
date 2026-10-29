@@ -39,8 +39,13 @@ jobs:
         run: python3 scripts/release.py check-template
       - name: Render release version
         run: python3 scripts/release.py render
-      - name: Package both crates
-        run: python3 scripts/release.py prepare --sha "$GITHUB_SHA"
+      - name: Test both crates
+        run: cargo test --locked --all-features --package laserstream-core-proto --package laserstream-core-client
+      - name: Package proto
+        run: >-
+          python3 scripts/release.py prepare
+          --crate laserstream-core-proto
+          --sha "$GITHUB_SHA"
 
   publish:
     if: github.event_name == 'release'
@@ -68,8 +73,11 @@ jobs:
           --sha "$GITHUB_SHA"
       - name: Test both crates
         run: cargo test --locked --all-features --package laserstream-core-proto --package laserstream-core-client
-      - name: Package both crates
-        run: python3 scripts/release.py prepare --sha "$GITHUB_SHA"
+      - name: Package proto
+        run: >-
+          python3 scripts/release.py prepare
+          --crate laserstream-core-proto
+          --sha "$GITHUB_SHA"
       - name: Authenticate to crates.io
         uses: rust-lang/crates-io-auth-action@v1
         id: auth
@@ -79,6 +87,11 @@ jobs:
         run: >-
           python3 scripts/release.py publish
           --crate laserstream-core-proto
+          --sha "$GITHUB_SHA"
+      - name: Package client
+        run: >-
+          python3 scripts/release.py prepare
+          --crate laserstream-core-client
           --sha "$GITHUB_SHA"
       - name: Publish client
         env:

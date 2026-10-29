@@ -230,20 +230,30 @@ def packaged_crate_sha(crate: str, version: str) -> str:
         return json.load(file)["git"]["sha1"]
 
 
-def prepare(sha: str) -> None:
+def prepare(crate: str, sha: str) -> None:
+    if crate not in CRATES:
+        raise ValueError(f"unknown crate {crate!r}")
     version = canonical_version()
     check_versions(version)
     package_dir = ROOT / "target/package"
-    for crate in CRATES:
-        (package_dir / f"{crate}-{version}.crate").unlink(missing_ok=True)
-        command = ["cargo", "package", "--locked", "--allow-dirty", "--package", crate]
-        if crate == "laserstream-core-client":
-            command.append("--no-verify")
-        run(command)
-        packaged_sha = packaged_crate_sha(crate, version)
-        if packaged_sha != sha:
-            raise RuntimeError(f"{crate} package provenance is {packaged_sha}, expected {sha}")
-    print(f"Prepared both LaserStream core crates from {sha}")
+    (package_dir / f"{crate}-{version}.crate").unlink(missing_ok=True)
+    attempts = 24 if crate == "laserstream-core-client" else 1
+    for attempt in range(attempts):
+        result = subprocess.run(
+            ["cargo", "package", "--locked", "--allow-dirty", "--package", crate],
+            cwd=ROOT,
+            text=True,
+        )
+        if result.returncode == 0:
+            break
+        if attempt + 1 < attempts:
+            time.sleep(10)
+    else:
+        raise SystemExit(f"failed to package {crate}@{version}")
+    packaged_sha = packaged_crate_sha(crate, version)
+    if packaged_sha != sha:
+        raise RuntimeError(f"{crate} package provenance is {packaged_sha}, expected {sha}")
+    print(f"Prepared {crate}@{version} from {sha}")
 
 
 def publish(crate: str, sha: str) -> None:
@@ -295,6 +305,7 @@ def main() -> None:
     release_parser.add_argument("--sha", required=True)
 
     prepare_parser = subparsers.add_parser("prepare")
+    prepare_parser.add_argument("--crate", required=True, choices=CRATES)
     prepare_parser.add_argument("--sha", required=True)
 
     publish_parser = subparsers.add_parser("publish")
@@ -315,7 +326,7 @@ def main() -> None:
     elif args.command == "preflight-release":
         check_release_source(args.tag, args.sha)
     elif args.command == "prepare":
-        prepare(args.sha)
+        prepare(args.crate, args.sha)
     elif args.command == "publish":
         publish(args.crate, args.sha)
     else:
