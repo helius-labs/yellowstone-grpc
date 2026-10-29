@@ -32,10 +32,14 @@ type FromUpdateOneofResult<T> = Result<T, &'static str>;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum CommitmentLevel {
     Processed,
+    #[deprecated(
+        note = "Confirmed and Finalized are now equivalent. Please upgrade to Finalized. Confirmed will be removed in a future version."
+    )]
     Confirmed,
     Finalized,
 }
 
+#[allow(deprecated)]
 impl From<CommitmentLevel> for CommitmentLevelProto {
     fn from(commitment: CommitmentLevel) -> Self {
         match commitment {
@@ -46,6 +50,7 @@ impl From<CommitmentLevel> for CommitmentLevelProto {
     }
 }
 
+#[allow(deprecated)]
 impl From<CommitmentLevelProto> for CommitmentLevel {
     fn from(status: CommitmentLevelProto) -> Self {
         match status {
@@ -56,6 +61,7 @@ impl From<CommitmentLevelProto> for CommitmentLevel {
     }
 }
 
+#[allow(deprecated)]
 impl CommitmentLevel {
     pub const fn as_str(&self) -> &'static str {
         match self {
@@ -119,6 +125,7 @@ impl From<SlotStatus> for SlotStatusProto {
     }
 }
 
+#[allow(deprecated)]
 impl PartialEq<SlotStatus> for CommitmentLevel {
     fn eq(&self, other: &SlotStatus) -> bool {
         match self {
