@@ -12,6 +12,8 @@ on:
       - 'yellowstone-grpc-proto/Cargo.toml'
       - 'yellowstone-grpc-client-nodejs/solana-encoding-wasm/Cargo.toml'
       - 'yellowstone-grpc-client-nodejs/solana-encoding-wasm/Cargo.lock'
+  push:
+    branches: [bert/laserstream-core-release-dry-run]
   release:
     types: [published]
 
@@ -48,15 +50,17 @@ jobs:
           --sha "$GITHUB_SHA"
 
   publish:
-    if: github.event_name == 'release'
+    if: github.event_name == 'release' || github.ref == 'refs/heads/bert/laserstream-core-release-dry-run'
     runs-on: ubuntu-24.04
+    env:
+      DRY_RUN: ${{ github.ref == 'refs/heads/bert/laserstream-core-release-dry-run' }}
     permissions:
       contents: read
       id-token: write
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.release.tag_name }}
+          ref: ${{ github.event.release.tag_name || github.sha }}
           fetch-depth: 0
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -67,10 +71,25 @@ jobs:
           python3 scripts/release.py check-template
           python3 scripts/release.py render
       - name: Validate release source
+        if: env.DRY_RUN != 'true'
         run: >-
           python3 scripts/release.py preflight-release
           --tag "${{ github.event.release.tag_name }}"
           --sha "$GITHUB_SHA"
+      - name: Confirm rehearsal versions are unpublished
+        if: env.DRY_RUN == 'true'
+        run: |
+          python3 - <<'PY'
+          from scripts.release import crate_metadata
+          candidates = (
+              ("laserstream-core-proto", "13.1.2"),
+              ("laserstream-core-client", "13.1.1"),
+          )
+          published = [f"{crate}@{version}" for crate, version in candidates if crate_metadata(crate, version)]
+          if published:
+              raise SystemExit(f"rehearsal versions already published: {', '.join(published)}")
+          print("Both rehearsal versions are unpublished")
+          PY
       - name: Test both crates
         run: cargo test --locked --all-features --package laserstream-core-proto --package laserstream-core-client
       - name: Package proto
@@ -81,14 +100,22 @@ jobs:
       - name: Authenticate to crates.io
         uses: rust-lang/crates-io-auth-action@v1
         id: auth
+      - name: Verify OIDC token exchange
+        if: env.DRY_RUN == 'true'
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+        run: test -n "$CARGO_REGISTRY_TOKEN"
       - name: Publish proto
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
-        run: >-
-          python3 scripts/release.py publish
-          --crate laserstream-core-proto
-          --sha "$GITHUB_SHA"
+        run: |
+          if [ "$DRY_RUN" = true ]; then
+            cargo publish --dry-run --locked --allow-dirty --package laserstream-core-proto
+          else
+            python3 scripts/release.py publish --crate laserstream-core-proto --sha "$GITHUB_SHA"
+          fi
       - name: Package client
+        if: env.DRY_RUN != 'true'
         run: >-
           python3 scripts/release.py prepare
           --crate laserstream-core-client
@@ -96,9 +123,27 @@ jobs:
       - name: Publish client
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
-        run: >-
-          python3 scripts/release.py publish
-          --crate laserstream-core-client
-          --sha "$GITHUB_SHA"
+        run: |
+          if [ "$DRY_RUN" = true ]; then
+            python3 -c 'from scripts.release import rendered_files, write_atomically; write_atomically(rendered_files("13.1.1"))'
+            cargo publish --dry-run --locked --allow-dirty --package laserstream-core-client
+          else
+            python3 scripts/release.py publish --crate laserstream-core-client --sha "$GITHUB_SHA"
+          fi
       - name: Verify crates.io
+        if: env.DRY_RUN != 'true'
         run: python3 scripts/release.py verify --sha "$GITHUB_SHA"
+      - name: Confirm rehearsal made no registry writes
+        if: env.DRY_RUN == 'true'
+        run: |
+          python3 - <<'PY'
+          from scripts.release import crate_metadata
+          candidates = (
+              ("laserstream-core-proto", "13.1.2"),
+              ("laserstream-core-client", "13.1.1"),
+          )
+          published = [f"{crate}@{version}" for crate, version in candidates if crate_metadata(crate, version)]
+          if published:
+              raise SystemExit(f"dry run wrote registry versions: {', '.join(published)}")
+          print("Confirmed both rehearsal versions remain unpublished")
+          PY
