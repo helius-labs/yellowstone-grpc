@@ -10,7 +10,6 @@ use {
             SubscribeRequestFilterBlockFooter, SubscribeRequestFilterBlocks,
             SubscribeRequestFilterBlocksMeta, SubscribeRequestFilterEntry,
             SubscribeRequestFilterSlots, SubscribeRequestFilterTransactions,
-            SubscribeUpdateBlockFooter,
         },
         plugin::{
             filter::{
@@ -1046,14 +1045,10 @@ impl FilterBlockFooter {
             if filters.is_empty() {
                 continue;
             }
-            let footer = &message.block_footer;
-            let has_certificates = footer.block_final_cert.is_some()
-                || footer.skip_reward_cert.is_some()
-                || footer.notar_reward_cert.is_some();
-            let filtered = if include_certificates == 1 || !has_certificates {
+            let filtered = if include_certificates == 1 {
                 Arc::clone(message)
             } else {
-                Self::without_certificates(message)
+                message.without_certificates()
             };
             updates.push(FilteredUpdate::new(
                 filters.iter().cloned().collect(),
@@ -1062,23 +1057,6 @@ impl FilterBlockFooter {
             ));
         }
         updates
-    }
-
-    fn without_certificates(message: &Arc<MessageBlockFooter>) -> Arc<MessageBlockFooter> {
-        let footer = &message.block_footer;
-        Arc::new(MessageBlockFooter {
-            block_footer: SubscribeUpdateBlockFooter {
-                slot: footer.slot,
-                bank_id: footer.bank_id,
-                bank_hash: footer.bank_hash.clone(),
-                block_producer_time_nanos: footer.block_producer_time_nanos,
-                block_user_agent: footer.block_user_agent.clone(),
-                block_final_cert: None,
-                skip_reward_cert: None,
-                notar_reward_cert: None,
-            },
-            created_at: message.created_at,
-        })
     }
 }
 
@@ -1271,8 +1249,8 @@ mod tests {
     }
 
     fn create_message_block_footer(slot: u64, bank_id: u64) -> Arc<MessageBlockFooter> {
-        Arc::new(MessageBlockFooter {
-            block_footer: crate::geyser::SubscribeUpdateBlockFooter {
+        Arc::new(MessageBlockFooter::from_update_oneof(
+            crate::geyser::SubscribeUpdateBlockFooter {
                 slot,
                 bank_id,
                 bank_hash: vec![1; 32],
@@ -1282,8 +1260,8 @@ mod tests {
                 skip_reward_cert: None,
                 notar_reward_cert: None,
             },
-            created_at: Timestamp::from(SystemTime::now()),
-        })
+            Timestamp::from(SystemTime::now()),
+        ))
     }
 
     #[test]
@@ -1414,6 +1392,64 @@ mod tests {
             };
             assert!(Arc::ptr_eq(message, &footer));
         }
+    }
+
+    #[test]
+    fn test_filter_block_footer_stripped_copy_is_built_once() {
+        let config = SubscribeRequest {
+            block_footer: HashMap::from([(
+                "off".to_owned(),
+                SubscribeRequestFilterBlockFooter::default(),
+            )]),
+            ..Default::default()
+        };
+        let filter = Filter::new(
+            &config,
+            &FilterLimits::default(),
+            &mut create_filter_names(),
+        )
+        .expect("filter should build");
+        let mut footer = create_message_block_footer(42, 7);
+        Arc::make_mut(&mut footer).skip_reward_cert =
+            Some(crate::geyser::BlockFooterSkipRewardCert {
+                slot: 41,
+                aggregate: None,
+            });
+        let message = Message::BlockFooter(Arc::clone(&footer));
+
+        let stripped = || -> Arc<MessageBlockFooter> {
+            let updates = filter.get_updates(&message, None);
+            match &updates[0].message {
+                FilteredUpdateOneof::BlockFooter(footer) => Arc::clone(footer),
+                _ => panic!("expected a block footer"),
+            }
+        };
+        let first = stripped();
+        let second = stripped();
+
+        assert!(first.skip_reward_cert.is_none());
+        assert!(!Arc::ptr_eq(&first, &footer));
+        assert!(Arc::ptr_eq(&first, &second));
+    }
+
+    #[test]
+    fn test_block_footer_mutation_and_clone_drop_the_stripped_copy() {
+        let mut footer = create_message_block_footer(42, 7);
+        Arc::make_mut(&mut footer).skip_reward_cert =
+            Some(crate::geyser::BlockFooterSkipRewardCert {
+                slot: 41,
+                aggregate: None,
+            });
+        let stale = footer.without_certificates();
+
+        let mut copy = (*footer).clone();
+        copy.bank_id = 8;
+        assert_eq!(Arc::new(copy).without_certificates().bank_id, 8);
+
+        let mut owned = Arc::try_unwrap(footer).expect("sole owner");
+        owned.bank_id = 9;
+        assert_eq!(Arc::new(owned).without_certificates().bank_id, 9);
+        assert_eq!(stale.bank_id, 7);
     }
 
     #[test]

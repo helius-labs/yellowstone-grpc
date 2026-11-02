@@ -22,7 +22,7 @@ use {
     std::{
         collections::HashSet,
         ops::{Deref, DerefMut},
-        sync::Arc,
+        sync::{Arc, OnceLock},
         time::SystemTime,
     },
 };
@@ -468,10 +468,24 @@ impl MessageBlockMeta {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug)]
 pub struct MessageBlockFooter {
     pub block_footer: SubscribeUpdateBlockFooter,
     pub created_at: Timestamp,
+    // Built on first use by a subscriber without include_certificates; Clone and DerefMut clear it.
+    without_certificates: OnceLock<Arc<MessageBlockFooter>>,
+}
+
+impl Clone for MessageBlockFooter {
+    fn clone(&self) -> Self {
+        Self::from_update_oneof(self.block_footer.clone(), self.created_at)
+    }
+}
+
+impl PartialEq for MessageBlockFooter {
+    fn eq(&self, other: &Self) -> bool {
+        self.block_footer == other.block_footer && self.created_at == other.created_at
+    }
 }
 
 impl Deref for MessageBlockFooter {
@@ -484,6 +498,7 @@ impl Deref for MessageBlockFooter {
 
 impl DerefMut for MessageBlockFooter {
     fn deref_mut(&mut self) -> &mut Self::Target {
+        self.without_certificates.take();
         &mut self.block_footer
     }
 }
@@ -496,7 +511,40 @@ impl MessageBlockFooter {
         Self {
             block_footer,
             created_at,
+            without_certificates: OnceLock::new(),
         }
+    }
+
+    #[inline]
+    pub const fn has_certificates(&self) -> bool {
+        let footer = &self.block_footer;
+        footer.block_final_cert.is_some()
+            || footer.skip_reward_cert.is_some()
+            || footer.notar_reward_cert.is_some()
+    }
+
+    /// The footer with its certificates cleared, built once and shared; `self` when it has none.
+    pub fn without_certificates(self: &Arc<Self>) -> Arc<Self> {
+        if !self.has_certificates() {
+            return Arc::clone(self);
+        }
+        let stripped = self.without_certificates.get_or_init(|| {
+            let footer = &self.block_footer;
+            Arc::new(Self::from_update_oneof(
+                SubscribeUpdateBlockFooter {
+                    slot: footer.slot,
+                    bank_id: footer.bank_id,
+                    bank_hash: footer.bank_hash.clone(),
+                    block_producer_time_nanos: footer.block_producer_time_nanos,
+                    block_user_agent: footer.block_user_agent.clone(),
+                    block_final_cert: None,
+                    skip_reward_cert: None,
+                    notar_reward_cert: None,
+                },
+                self.created_at,
+            ))
+        });
+        Arc::clone(stripped)
     }
 }
 

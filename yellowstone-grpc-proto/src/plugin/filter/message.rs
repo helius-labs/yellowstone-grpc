@@ -1470,8 +1470,8 @@ pub mod tests {
                 (Some(fast_final_cert), None, None),
             ),
         ] {
-            let message = Arc::new(MessageBlockFooter {
-                block_footer: SubscribeUpdateBlockFooter {
+            let message = Arc::new(MessageBlockFooter::from_update_oneof(
+                SubscribeUpdateBlockFooter {
                     slot: 42,
                     bank_id: 7,
                     bank_hash,
@@ -1481,8 +1481,8 @@ pub mod tests {
                     skip_reward_cert,
                     notar_reward_cert,
                 },
-                created_at: Timestamp::default(),
-            });
+                Timestamp::default(),
+            ));
             let update = FilteredUpdate {
                 filters: create_message_filters(&["123"]),
                 message: FilteredUpdateOneof::block_footer(Arc::clone(&message)),
