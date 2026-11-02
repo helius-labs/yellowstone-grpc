@@ -1046,7 +1046,11 @@ impl FilterBlockFooter {
             if filters.is_empty() {
                 continue;
             }
-            let filtered = if include_certificates == 1 {
+            let footer = &message.block_footer;
+            let has_certificates = footer.block_final_cert.is_some()
+                || footer.skip_reward_cert.is_some()
+                || footer.notar_reward_cert.is_some();
+            let filtered = if include_certificates == 1 || !has_certificates {
                 Arc::clone(message)
             } else {
                 Self::without_certificates(message)
@@ -1374,6 +1378,42 @@ mod tests {
             updates[0].message,
             FilteredUpdateOneof::BlockFooter(_)
         ));
+    }
+
+    #[test]
+    fn test_filter_block_footer_without_certificates_is_shared() {
+        let config = SubscribeRequest {
+            block_footer: HashMap::from([
+                (
+                    "off".to_owned(),
+                    SubscribeRequestFilterBlockFooter::default(),
+                ),
+                (
+                    "on".to_owned(),
+                    SubscribeRequestFilterBlockFooter {
+                        include_certificates: Some(true),
+                    },
+                ),
+            ]),
+            ..Default::default()
+        };
+        let filter = Filter::new(
+            &config,
+            &FilterLimits::default(),
+            &mut create_filter_names(),
+        )
+        .expect("filter should build");
+        let footer = create_message_block_footer(42, 7);
+
+        let updates = filter.get_updates(&Message::BlockFooter(Arc::clone(&footer)), None);
+
+        assert_eq!(updates.len(), 2);
+        for update in &updates {
+            let FilteredUpdateOneof::BlockFooter(message) = &update.message else {
+                panic!("expected a block footer");
+            };
+            assert!(Arc::ptr_eq(message, &footer));
+        }
     }
 
     #[test]

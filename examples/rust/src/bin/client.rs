@@ -388,9 +388,9 @@ struct ActionSubscribe {
     #[clap(long)]
     block_footer: bool,
 
-    /// Include available certificates in block footer updates
+    /// Subscribe on block footer updates with available certificates (implies --block-footer)
     #[clap(long)]
-    block_footer_include_certificates: Option<bool>,
+    block_footer_include_certificates: bool,
 
     /// Re-send message from slot
     #[clap(long)]
@@ -575,11 +575,13 @@ impl Action {
                 }
 
                 let mut block_footer: BlockFooterFilterMap = HashMap::new();
-                if args.block_footer {
+                if args.block_footer || args.block_footer_include_certificates {
                     block_footer.insert(
                         "client".to_owned(),
                         SubscribeRequestFilterBlockFooter {
-                            include_certificates: args.block_footer_include_certificates,
+                            include_certificates: args
+                                .block_footer_include_certificates
+                                .then_some(true),
                         },
                     );
                 }
