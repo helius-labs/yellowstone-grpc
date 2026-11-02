@@ -15,10 +15,26 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # Stable check required by the organization CI ruleset.
+  ci-checks:
+    name: ci-checks
+    needs: [test]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Verify required job results
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          echo "$RESULTS"
+          echo "$RESULTS" | jq -e 'length > 0 and all(.[]; .result == "success")'
+
   test:
     strategy:
       matrix:
-        os: [ubuntu-20.04, ubuntu-22.04]
+        os: [ubuntu-24.04, ubuntu-22.04]
     runs-on: ["${{ matrix.os }}"]
     steps:
       - uses: actions/checkout@v4
@@ -34,15 +50,13 @@ jobs:
           echo "GEYSER_PLUGIN_NAME=$plugin_name" | tee -a $GITHUB_ENV
           echo "GEYSER_PLUGIN_LIB=lib${plugin_lib_name}" | tee -a $GITHUB_ENV
 
-      - uses: actions-rs/toolchain@v1
-        with:
-          toolchain: nightly
-          components: rustfmt
+      - name: Install nightly formatter
+        run: rustup toolchain install nightly --profile minimal --component rustfmt
 
-      - uses: actions-rs/toolchain@v1
-        with:
-          toolchain: ${{ env.RUST_STABLE }}
-          components: clippy, rustfmt
+      - name: Install pinned Rust toolchain
+        run: |
+          rustup toolchain install "$RUST_STABLE" --profile minimal --component clippy --component rustfmt
+          rustup default "$RUST_STABLE"
 
       - uses: actions/cache@v4
         with:
@@ -69,7 +83,7 @@ jobs:
         run: cargo +nightly fmt --all -- --check
 
       - name: cargo deny check advisories
-        uses: EmbarkStudios/cargo-deny-action@v1
+        uses: EmbarkStudios/cargo-deny-action@v2.1.1
         with:
           command: check advisories
 
