@@ -42,6 +42,9 @@ pub use {prost, prost_types};
 #[cfg(feature = "plugin")]
 pub mod plugin;
 
+#[cfg(feature = "plugin")]
+mod convert_to_geyser;
+
 #[cfg(feature = "convert")]
 pub mod convert_to {
     use {

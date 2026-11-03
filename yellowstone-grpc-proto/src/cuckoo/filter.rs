@@ -203,7 +203,7 @@ impl<T: Hash, S: BuildHasher> CuckooFilter<T, S> {
 
 /// Wire → runtime. Rebuilds the hasher from `proto.hash_seed` so `contains` matches
 /// the serializer. Malformed input is tolerated: empty → one empty bucket; stray
-/// bytes dropped via `chunks_exact`.
+/// bytes dropped via `as_chunks`.
 impl<T> From<&ProtoCuckooFilter> for CuckooFilter<T, YellowstoneHasherBuilder> {
     fn from(proto: &ProtoCuckooFilter) -> Self {
         let hasher_builder = YellowstoneHasherBuilder::new(proto.hash_seed);
@@ -216,14 +216,14 @@ impl<T> From<&ProtoCuckooFilter> for CuckooFilter<T, YellowstoneHasherBuilder> {
             };
         }
 
-        let buckets: Vec<Bucket> = proto
+        let fingerprints: Vec<u16> = proto
             .data
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
-            .collect::<Vec<u16>>()
-            .chunks_exact(ENTRIES_PER_BUCKET)
-            .map(|chunk| [chunk[0], chunk[1], chunk[2], chunk[3]])
             .collect();
+        let buckets: Vec<Bucket> = fingerprints.as_chunks::<ENTRIES_PER_BUCKET>().0.to_vec();
 
         if buckets.is_empty() {
             return Self {
