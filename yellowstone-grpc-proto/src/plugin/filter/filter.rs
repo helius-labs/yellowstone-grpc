@@ -10,6 +10,7 @@ use {
             SubscribeRequestFilterBlockFooter, SubscribeRequestFilterBlocks,
             SubscribeRequestFilterBlocksMeta, SubscribeRequestFilterEntry,
             SubscribeRequestFilterSlots, SubscribeRequestFilterTransactions,
+            SubscribeUpdateBlockFooter,
         },
         plugin::{
             filter::{
@@ -1020,7 +1021,8 @@ impl FilterBlocksMeta {
 
 #[derive(Debug, Default, Clone)]
 struct FilterBlockFooter {
-    filters: Vec<FilterName>,
+    // Indexed by include_certificates: [0] gets footers without certificates, [1] verbatim.
+    filters: [Vec<FilterName>; 2],
 }
 
 impl FilterBlockFooter {
@@ -1030,22 +1032,53 @@ impl FilterBlockFooter {
         names: &mut FilterNames,
     ) -> FilterResult<Self> {
         FilterLimits::check_max(configs.len(), limits.max)?;
-
-        Ok(Self {
-            filters: configs
-                .keys()
-                .map(|name| names.get(name))
-                .collect::<Result<_, _>>()?,
-        })
+        let mut this = Self::default();
+        for (name, config) in configs {
+            let include_certificates = config.include_certificates.unwrap_or(false);
+            this.filters[usize::from(include_certificates)].push(names.get(name)?);
+        }
+        Ok(this)
     }
 
     fn get_updates(&self, message: &Arc<MessageBlockFooter>) -> FilteredUpdates {
-        let filters = self.filters.as_slice();
-        filtered_updates_once_ref!(
-            filters,
-            FilteredUpdateOneof::block_footer(Arc::clone(message)),
-            message.created_at
-        )
+        let mut updates = FilteredUpdates::new();
+        for (include_certificates, filters) in self.filters.iter().enumerate() {
+            if filters.is_empty() {
+                continue;
+            }
+            let footer = &message.block_footer;
+            let has_certificates = footer.block_final_cert.is_some()
+                || footer.skip_reward_cert.is_some()
+                || footer.notar_reward_cert.is_some();
+            let filtered = if include_certificates == 1 || !has_certificates {
+                Arc::clone(message)
+            } else {
+                Self::without_certificates(message)
+            };
+            updates.push(FilteredUpdate::new(
+                filters.iter().cloned().collect(),
+                FilteredUpdateOneof::block_footer(filtered),
+                message.created_at,
+            ));
+        }
+        updates
+    }
+
+    fn without_certificates(message: &Arc<MessageBlockFooter>) -> Arc<MessageBlockFooter> {
+        let footer = &message.block_footer;
+        Arc::new(MessageBlockFooter {
+            block_footer: SubscribeUpdateBlockFooter {
+                slot: footer.slot,
+                bank_id: footer.bank_id,
+                bank_hash: footer.bank_hash.clone(),
+                block_producer_time_nanos: footer.block_producer_time_nanos,
+                block_user_agent: footer.block_user_agent.clone(),
+                block_final_cert: None,
+                skip_reward_cert: None,
+                notar_reward_cert: None,
+            },
+            created_at: message.created_at,
+        })
     }
 }
 
@@ -1148,13 +1181,17 @@ mod tests {
         crate::{
             convert_to,
             geyser::{
-                SubscribeRequest, SubscribeRequestFilterAccounts,
+                subscribe_update::UpdateOneof, SubscribeRequest, SubscribeRequestFilterAccounts,
                 SubscribeRequestFilterBlockFooter, SubscribeRequestFilterTransactions,
+                SubscribeUpdate,
             },
             plugin::{
                 filter::{
                     limits::FilterLimits,
-                    message::{FilteredUpdateFilters, FilteredUpdateOneof},
+                    message::{
+                        tests::create_block_footer_certificates, FilteredUpdateFilters,
+                        FilteredUpdateOneof,
+                    },
                     name::{FilterName, FilterNames},
                 },
                 message::{
@@ -1241,6 +1278,9 @@ mod tests {
                 bank_hash: vec![1; 32],
                 block_producer_time_nanos: 123,
                 block_user_agent: b"agave".to_vec(),
+                block_final_cert: None,
+                skip_reward_cert: None,
+                notar_reward_cert: None,
             },
             created_at: Timestamp::from(SystemTime::now()),
         })
@@ -1308,8 +1348,14 @@ mod tests {
     fn test_filter_block_footer_matches_exact_subscription_names() {
         let config = SubscribeRequest {
             block_footer: HashMap::from([
-                ("footer-a".to_owned(), SubscribeRequestFilterBlockFooter {}),
-                ("footer-b".to_owned(), SubscribeRequestFilterBlockFooter {}),
+                (
+                    "footer-a".to_owned(),
+                    SubscribeRequestFilterBlockFooter::default(),
+                ),
+                (
+                    "footer-b".to_owned(),
+                    SubscribeRequestFilterBlockFooter::default(),
+                ),
             ]),
             ..Default::default()
         };
@@ -1332,6 +1378,132 @@ mod tests {
             updates[0].message,
             FilteredUpdateOneof::BlockFooter(_)
         ));
+    }
+
+    #[test]
+    fn test_filter_block_footer_without_certificates_is_shared() {
+        let config = SubscribeRequest {
+            block_footer: HashMap::from([
+                (
+                    "off".to_owned(),
+                    SubscribeRequestFilterBlockFooter::default(),
+                ),
+                (
+                    "on".to_owned(),
+                    SubscribeRequestFilterBlockFooter {
+                        include_certificates: Some(true),
+                    },
+                ),
+            ]),
+            ..Default::default()
+        };
+        let filter = Filter::new(
+            &config,
+            &FilterLimits::default(),
+            &mut create_filter_names(),
+        )
+        .expect("filter should build");
+        let footer = create_message_block_footer(42, 7);
+
+        let updates = filter.get_updates(&Message::BlockFooter(Arc::clone(&footer)), None);
+
+        assert_eq!(updates.len(), 2);
+        for update in &updates {
+            let FilteredUpdateOneof::BlockFooter(message) = &update.message else {
+                panic!("expected a block footer");
+            };
+            assert!(Arc::ptr_eq(message, &footer));
+        }
+    }
+
+    #[test]
+    fn test_filter_block_footer_certificate_selection_on_wire() {
+        use prost::Message as _;
+
+        let (final_cert, skip_cert, notar_cert) = create_block_footer_certificates();
+        for certificates in [
+            (None, None, None),
+            (Some(final_cert), Some(skip_cert), Some(notar_cert)),
+        ] {
+            let mut source = create_message_block_footer(42, 7);
+            let footer = &mut Arc::make_mut(&mut source).block_footer;
+            (
+                footer.block_final_cert,
+                footer.skip_reward_cert,
+                footer.notar_reward_cert,
+            ) = certificates;
+            let original = source.block_footer.clone();
+
+            for settings in [
+                vec![("default", None)],
+                vec![("false", Some(false))],
+                vec![("true", Some(true))],
+                vec![
+                    ("default", None),
+                    ("false", Some(false)),
+                    ("true", Some(true)),
+                    ("also_true", Some(true)),
+                ],
+            ] {
+                let request = SubscribeRequest {
+                    block_footer: settings
+                        .iter()
+                        .map(|(name, include_certificates)| {
+                            (
+                                name.to_string(),
+                                SubscribeRequestFilterBlockFooter {
+                                    include_certificates: *include_certificates,
+                                },
+                            )
+                        })
+                        .collect(),
+                    ..Default::default()
+                };
+                let request = SubscribeRequest::decode(request.encode_to_vec().as_slice()).unwrap();
+                let filter = Filter::new(
+                    &request,
+                    &FilterLimits::default(),
+                    &mut create_filter_names(),
+                )
+                .unwrap();
+                let updates = filter.get_updates(&Message::BlockFooter(Arc::clone(&source)), None);
+                assert_eq!(updates.len(), if settings.len() == 1 { 1 } else { 2 });
+                let mut names = Vec::new();
+                for update in updates {
+                    let encoded = update.encode_to_vec();
+                    assert_eq!(encoded.len(), update.encoded_len());
+                    assert_eq!(encoded, update.as_subscribe_update().encode_to_vec());
+                    let decoded = SubscribeUpdate::decode(encoded.as_slice()).unwrap();
+                    assert_eq!(decoded, update.as_subscribe_update());
+                    assert_eq!(decoded.created_at, Some(source.created_at));
+                    let Some(UpdateOneof::BlockFooter(actual)) = decoded.update_oneof else {
+                        panic!("expected a block footer");
+                    };
+                    for name in decoded.filters {
+                        let include = settings.iter().find(|(key, _)| *key == name).unwrap().1;
+                        let mut expected = original.clone();
+                        if include != Some(true) {
+                            expected.block_final_cert = None;
+                            expected.skip_reward_cert = None;
+                            expected.notar_reward_cert = None;
+                        }
+                        assert_eq!(actual, expected, "filter {name}");
+                        names.push(name);
+                    }
+                }
+                names.sort_unstable();
+                let mut expected_names = settings
+                    .iter()
+                    .map(|(name, _)| name.to_string())
+                    .collect::<Vec<_>>();
+                expected_names.sort_unstable();
+                assert_eq!(names, expected_names);
+                assert_eq!(
+                    source.block_footer, original,
+                    "shared source must stay intact"
+                );
+            }
+        }
     }
 
     #[test]
