@@ -30,13 +30,14 @@ use {
             subscribe_request_filter_accounts_filter::Filter as AccountsFilterOneof,
             subscribe_request_filter_accounts_filter_lamports::Cmp as AccountsFilterLamports,
             subscribe_request_filter_accounts_filter_memcmp::Data as AccountsFilterMemcmpOneof,
-            subscribe_update::UpdateOneof, CommitmentLevel, SubscribeRequest,
-            SubscribeRequestAccountsDataSlice, SubscribeRequestFilterAccounts,
+            subscribe_update::UpdateOneof, BlockFooterVotesAggregate, CommitmentLevel,
+            SubscribeRequest, SubscribeRequestAccountsDataSlice, SubscribeRequestFilterAccounts,
             SubscribeRequestFilterAccountsFilter, SubscribeRequestFilterAccountsFilterLamports,
-            SubscribeRequestFilterAccountsFilterMemcmp, SubscribeRequestFilterBlocks,
-            SubscribeRequestFilterBlocksMeta, SubscribeRequestFilterEntry,
-            SubscribeRequestFilterSlots, SubscribeRequestFilterTransactions, SubscribeRequestPing,
-            SubscribeUpdateAccountInfo, SubscribeUpdateEntry, SubscribeUpdateTransactionInfo,
+            SubscribeRequestFilterAccountsFilterMemcmp, SubscribeRequestFilterBlockFooter,
+            SubscribeRequestFilterBlocks, SubscribeRequestFilterBlocksMeta,
+            SubscribeRequestFilterEntry, SubscribeRequestFilterSlots,
+            SubscribeRequestFilterTransactions, SubscribeRequestPing, SubscribeUpdateAccountInfo,
+            SubscribeUpdateEntry, SubscribeUpdateTransactionInfo,
         },
         prost::Message,
     },
@@ -49,6 +50,7 @@ type TransactionsStatusFilterMap = HashMap<String, SubscribeRequestFilterTransac
 type EntryFilterMap = HashMap<String, SubscribeRequestFilterEntry>;
 type BlocksFilterMap = HashMap<String, SubscribeRequestFilterBlocks>;
 type BlocksMetaFilterMap = HashMap<String, SubscribeRequestFilterBlocksMeta>;
+type BlockFooterFilterMap = HashMap<String, SubscribeRequestFilterBlockFooter>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum Compression {
@@ -382,6 +384,14 @@ struct ActionSubscribe {
     #[clap(long)]
     blocks_meta: bool,
 
+    /// Subscribe on Alpenglow block footer updates
+    #[clap(long)]
+    block_footer: bool,
+
+    /// Subscribe on block footer updates with available certificates (implies --block-footer)
+    #[clap(long)]
+    block_footer_include_certificates: bool,
+
     /// Re-send message from slot
     #[clap(long)]
     from_slot: Option<u64>,
@@ -564,6 +574,18 @@ impl Action {
                     blocks_meta.insert("client".to_owned(), SubscribeRequestFilterBlocksMeta {});
                 }
 
+                let mut block_footer: BlockFooterFilterMap = HashMap::new();
+                if args.block_footer || args.block_footer_include_certificates {
+                    block_footer.insert(
+                        "client".to_owned(),
+                        SubscribeRequestFilterBlockFooter {
+                            include_certificates: args
+                                .block_footer_include_certificates
+                                .then_some(true),
+                        },
+                    );
+                }
+
                 let mut accounts_data_slice = Vec::new();
                 for data_slice in args.accounts_data_slice.iter() {
                     match data_slice.split_once(',') {
@@ -589,7 +611,7 @@ impl Action {
                         entry: entries,
                         blocks,
                         blocks_meta,
-                        block_footer: HashMap::new(),
+                        block_footer,
                         commitment: commitment.map(|x| x as i32),
                         accounts_data_slice,
                         ping,
@@ -911,6 +933,19 @@ async fn geyser_subscribe(
                                 "bankHash": msg.bank_hash,
                                 "blockProducerTimeNanos": msg.block_producer_time_nanos.to_string(),
                                 "blockUserAgent": msg.block_user_agent,
+                                "blockFinalCert": msg.block_final_cert.map(|cert| json!({
+                                    "slot": cert.slot,
+                                    "finalAggregate": cert.final_aggregate.map(votes_aggregate_json),
+                                    "notarAggregate": cert.notar_aggregate.map(votes_aggregate_json),
+                                })),
+                                "skipRewardCert": msg.skip_reward_cert.map(|cert| json!({
+                                    "slot": cert.slot,
+                                    "aggregate": cert.aggregate.map(votes_aggregate_json),
+                                })),
+                                "notarRewardCert": msg.notar_reward_cert.map(|cert| json!({
+                                    "slot": cert.slot,
+                                    "aggregate": cert.aggregate.map(votes_aggregate_json),
+                                })),
                             }),
                         );
                     }
@@ -1067,6 +1102,15 @@ fn create_pretty_transaction(tx: SubscribeUpdateTransactionInfo) -> anyhow::Resu
             .encode(UiTransactionEncoding::Base64, Some(u8::MAX), true)
             .context("failed to encode transaction")?,
     }))
+}
+
+fn votes_aggregate_json(aggregate: BlockFooterVotesAggregate) -> Value {
+    json!({
+        "signatureKind": aggregate.signature_kind,
+        "signature": bs58::encode(&aggregate.signature).into_string(),
+        "blockId": bs58::encode(&aggregate.block_id).into_string(),
+        "signerBitmap": bs58::encode(&aggregate.signer_bitmap).into_string(),
+    })
 }
 
 fn create_pretty_entry(msg: SubscribeUpdateEntry) -> anyhow::Result<Value> {

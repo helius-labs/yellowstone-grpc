@@ -1054,7 +1054,11 @@ pub mod tests {
         super::{FilteredUpdate, FilteredUpdateBlock, FilteredUpdateFilters, FilteredUpdateOneof},
         crate::{
             convert_to,
-            geyser::{SubscribeUpdate, SubscribeUpdateBlockFooter, SubscribeUpdateBlockMeta},
+            geyser::{
+                BlockFooterFinalCert, BlockFooterNotarRewardCert, BlockFooterSignatureKind,
+                BlockFooterSkipRewardCert, BlockFooterVotesAggregate, SubscribeUpdate,
+                SubscribeUpdateBlockFooter, SubscribeUpdateBlockMeta,
+            },
             plugin::{
                 filter::{name::FilterName, FilterAccountsDataSlice},
                 message::{
@@ -1089,6 +1093,38 @@ pub mod tests {
             filters.push(FilterName::new(*name));
         }
         filters
+    }
+
+    // Slow finalization, a skip cert with an empty bitmap, and a notar reward cert.
+    pub fn create_block_footer_certificates() -> (
+        BlockFooterFinalCert,
+        BlockFooterSkipRewardCert,
+        BlockFooterNotarRewardCert,
+    ) {
+        let aggregate = |byte, block_id| BlockFooterVotesAggregate {
+            signature_kind: BlockFooterSignatureKind::CompressedBls12381G2.into(),
+            signature: vec![byte; 96],
+            block_id,
+            signer_bitmap: vec![byte; 3],
+        };
+        (
+            BlockFooterFinalCert {
+                slot: 42,
+                final_aggregate: Some(aggregate(1, Vec::new())),
+                notar_aggregate: Some(aggregate(2, vec![4; 32])),
+            },
+            BlockFooterSkipRewardCert {
+                slot: 42,
+                aggregate: Some(BlockFooterVotesAggregate {
+                    signer_bitmap: Vec::new(),
+                    ..aggregate(3, Vec::new())
+                }),
+            },
+            BlockFooterNotarRewardCert {
+                slot: 42,
+                aggregate: Some(aggregate(4, vec![5; 32])),
+            },
+        )
     }
 
     pub fn create_account_data_slice() -> Vec<FilterAccountsDataSlice> {
@@ -1409,9 +1445,30 @@ pub mod tests {
 
     #[test]
     fn test_message_block_footer() {
-        for (bank_hash, nanos, user_agent) in [
-            (vec![0u8; 32], 0u64, Vec::new()),
-            (vec![7u8; 32], u64::MAX, b"agave/3.0.0".to_vec()),
+        let (final_cert, skip_cert, notar_cert) = create_block_footer_certificates();
+        let fast_final_cert = BlockFooterFinalCert {
+            notar_aggregate: None,
+            ..final_cert.clone()
+        };
+        for (
+            bank_hash,
+            nanos,
+            user_agent,
+            (block_final_cert, skip_reward_cert, notar_reward_cert),
+        ) in [
+            (vec![0u8; 32], 0u64, Vec::new(), (None, None, None)),
+            (
+                vec![7u8; 32],
+                u64::MAX,
+                b"agave/3.0.0".to_vec(),
+                (Some(final_cert), Some(skip_cert), Some(notar_cert)),
+            ),
+            (
+                vec![9u8; 32],
+                1,
+                b"agave/4.3.2".to_vec(),
+                (Some(fast_final_cert), None, None),
+            ),
         ] {
             let message = Arc::new(MessageBlockFooter {
                 block_footer: SubscribeUpdateBlockFooter {
@@ -1420,9 +1477,21 @@ pub mod tests {
                     bank_hash,
                     block_producer_time_nanos: nanos,
                     block_user_agent: user_agent,
+                    block_final_cert,
+                    skip_reward_cert,
+                    notar_reward_cert,
                 },
                 created_at: Timestamp::default(),
             });
+            let update = FilteredUpdate {
+                filters: create_message_filters(&["123"]),
+                message: FilteredUpdateOneof::block_footer(Arc::clone(&message)),
+                created_at: Timestamp::default(),
+            };
+            assert_eq!(
+                update.encode_to_vec(),
+                update.as_subscribe_update().encode_to_vec()
+            );
             encode_decode_cmp(&["123"], FilteredUpdateOneof::block_footer(message));
         }
     }
