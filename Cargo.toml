@@ -106,14 +106,14 @@ notify = "8.2.0"
 agave-geyser-plugin-interface = "5.0.0"
 
 # Agave Monorepo
-agave-feature-set = { git = "https://github.com/helius-labs/agave", rev = "3a8a8633724743ae510f1b055fb457388ea2bb37" }
-agave-votor-messages = { git = "https://github.com/helius-labs/agave", rev = "3a8a8633724743ae510f1b055fb457388ea2bb37" }
-solana-account-decoder = { git = "https://github.com/helius-labs/agave", rev = "3a8a8633724743ae510f1b055fb457388ea2bb37" }
-solana-entry = { git = "https://github.com/helius-labs/agave", rev = "3a8a8633724743ae510f1b055fb457388ea2bb37" }
+agave-feature-set = { git = "https://github.com/helius-labs/agave", rev = "d32538cfb2abe4df1ee51eea4361eb632b38cda5" }
+agave-votor-messages = { git = "https://github.com/helius-labs/agave", rev = "d32538cfb2abe4df1ee51eea4361eb632b38cda5" }
+solana-account-decoder = { git = "https://github.com/helius-labs/agave", rev = "d32538cfb2abe4df1ee51eea4361eb632b38cda5" }
+solana-entry = { git = "https://github.com/helius-labs/agave", rev = "d32538cfb2abe4df1ee51eea4361eb632b38cda5" }
 solana-logger = "3.0.0"
-solana-storage-proto = { git = "https://github.com/helius-labs/agave", rev = "3a8a8633724743ae510f1b055fb457388ea2bb37" }
-solana-transaction-context = { git = "https://github.com/helius-labs/agave", rev = "3a8a8633724743ae510f1b055fb457388ea2bb37" }
-solana-transaction-status = { git = "https://github.com/helius-labs/agave", rev = "3a8a8633724743ae510f1b055fb457388ea2bb37" }
+solana-storage-proto = { git = "https://github.com/helius-labs/agave", rev = "d32538cfb2abe4df1ee51eea4361eb632b38cda5" }
+solana-transaction-context = { git = "https://github.com/helius-labs/agave", rev = "d32538cfb2abe4df1ee51eea4361eb632b38cda5" }
+solana-transaction-status = { git = "https://github.com/helius-labs/agave", rev = "d32538cfb2abe4df1ee51eea4361eb632b38cda5" }
 
 # Solana SDK
 solana-message = "5.1.0"
@@ -138,7 +138,7 @@ spl-token-2022-interface = "2.1.0"
 # Yellowstone
 yellowstone-block-machine = { version = "0.12.0", default-features = false }
 yellowstone-grpc-client = { path = "yellowstone-grpc-client", version = "17.0.0" }
-yellowstone-grpc-geyser = { path = "yellowstone-grpc-geyser", version = "17.0.0+solana.4.4.0" }
+yellowstone-grpc-geyser = { path = "yellowstone-grpc-geyser", version = "17.0.0+solana.4.4.1" }
 yellowstone-grpc-proto = { path = "yellowstone-grpc-proto", version = "14.0.1", default-features = false }
 yellowstone-grpc-e2e-macros = { path = "yellowstone-grpc-e2e-macros", version = "0.1.0" }
 yellowstone-grpc-tools = { path = "yellowstone-grpc-tools", version = "0.1.0" }
