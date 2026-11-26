@@ -4,7 +4,7 @@ use {
 };
 
 fn main() -> anyhow::Result<()> {
-    std::env::set_var("PROTOC", protobuf_src::protoc());
+    std::env::set_var("PROTOC", protoc_bin_vendored::protoc_bin_path()?);
 
     // build protos
     tonic_prost_build::configure().compile_protos(&["proto/geyser.proto"], &["proto"])?;
