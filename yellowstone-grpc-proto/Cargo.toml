@@ -55,9 +55,14 @@ solana-transaction = { workspace = true, features = ["blake3"] }
 
 [build-dependencies]
 anyhow = { workspace = true }
-protoc-bin-vendored = { workspace = true }
 tonic-build = { workspace = true }
 tonic-prost-build = { workspace = true }
+
+[target.'cfg(any(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64")), target_os = "macos", target_os = "windows"))'.build-dependencies]
+protoc-bin-vendored = { workspace = true }
+
+[target.'cfg(not(any(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64")), target_os = "macos", target_os = "windows")))'.build-dependencies]
+protobuf-src = { workspace = true }
 
 [features]
 default = ["convert", "tonic", "tonic-compression"]

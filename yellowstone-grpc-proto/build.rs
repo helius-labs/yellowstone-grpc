@@ -4,7 +4,27 @@ use {
 };
 
 fn main() -> anyhow::Result<()> {
-    std::env::set_var("PROTOC", protoc_bin_vendored::protoc_bin_path()?);
+    if std::env::var_os("PROTOC").is_none() {
+        #[cfg(any(
+            all(
+                target_os = "linux",
+                any(target_arch = "x86_64", target_arch = "aarch64")
+            ),
+            target_os = "macos",
+            target_os = "windows"
+        ))]
+        let protoc = protoc_bin_vendored::protoc_bin_path()?;
+        #[cfg(not(any(
+            all(
+                target_os = "linux",
+                any(target_arch = "x86_64", target_arch = "aarch64")
+            ),
+            target_os = "macos",
+            target_os = "windows"
+        )))]
+        let protoc = protobuf_src::protoc();
+        std::env::set_var("PROTOC", protoc);
+    }
 
     // build protos
     tonic_prost_build::configure().compile_protos(&["proto/geyser.proto"], &["proto"])?;
