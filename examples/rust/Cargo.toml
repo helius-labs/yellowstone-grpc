@@ -17,12 +17,12 @@ anyhow = { workspace = true }
 backoff = { workspace = true, features = ["tokio"] }
 bincode = { workspace = true }
 bs58 = { workspace = true }
-chrono = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
 env_logger = { workspace = true }
 futures = { workspace = true }
 hex = { workspace = true }
 indicatif = { workspace = true }
+jiff = { workspace = true }
 log = { workspace = true }
 maplit = { workspace = true }
 serde_json = { workspace = true }

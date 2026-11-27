@@ -1,7 +1,7 @@
 use {
-    chrono::{DateTime, Utc},
     clap::{Parser, ValueEnum},
     futures::{sink::SinkExt, stream::StreamExt},
+    jiff::Timestamp,
     log::{error, info},
     maplit::hashmap,
     solana_signature::Signature,
@@ -119,7 +119,7 @@ async fn main() -> anyhow::Result<()> {
         })
         .await?;
 
-    let mut messages: BTreeMap<u64, (Option<DateTime<Utc>>, Vec<String>)> = BTreeMap::new();
+    let mut messages: BTreeMap<u64, (Option<Timestamp>, Vec<String>)> = BTreeMap::new();
     while let Some(message) = stream.next().await {
         match message {
             Ok(msg) => {
@@ -138,7 +138,7 @@ async fn main() -> anyhow::Result<()> {
                     Some(UpdateOneof::BlockMeta(block)) => {
                         let entry = messages.entry(block.slot).or_default();
                         entry.0 = block.block_time.map(|obj| {
-                            DateTime::from_timestamp(obj.timestamp, 0)
+                            Timestamp::from_second(obj.timestamp)
                                 .expect("invalid or out-of-range datetime")
                         });
                         if let Some(timestamp) = entry.0 {
